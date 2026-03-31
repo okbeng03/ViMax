@@ -241,6 +241,7 @@ class CameraImageGenerator:
         self,
         shot_desc: ShotDescription,
         character_portrait_path_and_text_pairs: List[Tuple[str, str]],
+        size: str = "2560x1440",
     ) -> ImageOutput:
         prompt = ""
         reference_image_paths = []
@@ -251,6 +252,6 @@ class CameraImageGenerator:
         image_output = await self.image_generator.generate_single_image(
             prompt=prompt,
             reference_image_paths=reference_image_paths,
-            size="2560x1440",
+            size=size,
         )
         return image_output

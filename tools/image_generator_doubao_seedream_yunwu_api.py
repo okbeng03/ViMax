@@ -65,7 +65,7 @@ class ImageGeneratorDoubaoSeedreamYunwuAPI:
         except Exception as e:
             logging.error(f"Error occurred while generating image: {e}")
             raise e
-        print(111, response_json)
+        # print(111, response_json)
         if response_json['data']:
             data = response_json['data'][0]['url']
             return ImageOutput(fmt="url", ext="png", data=data)
