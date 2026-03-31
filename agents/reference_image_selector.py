@@ -229,7 +229,7 @@ class ReferenceImageSelector:
         self,
         chat_model,
     ):
-
+        # TODO:: 临时使用 qwen3-max 模型
         self.chat_model = init_chat_model(
             base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
             model="qwen3-max",
