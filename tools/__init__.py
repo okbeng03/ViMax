@@ -6,6 +6,10 @@ from .render_backend import RenderBackend
 from .image_generator_doubao_seedream_yunwu_api import ImageGeneratorDoubaoSeedreamYunwuAPI
 from .image_generator_nanobanana_google_api import ImageGeneratorNanobananaGoogleAPI
 from .image_generator_nanobanana_yunwu_api import ImageGeneratorNanobananaYunwuAPI
+from .image_generator_comfyui_flux import ImageGeneratorComfyUIFlux
+
+# ComfyUI workflow runner
+from .comfyui_workflow_runner import ComfyUIWorkflowRunner, ComfyUIWorkflowConfig
 
 # reranker for rag
 from .reranker_bge_silicon_api import RerankerBgeSiliconapi
@@ -14,6 +18,7 @@ from .reranker_bge_silicon_api import RerankerBgeSiliconapi
 from .video_generator_doubao_seedance_yunwu_api import VideoGeneratorDoubaoSeedanceYunwuAPI
 from .video_generator_veo_google_api import VideoGeneratorVeoGoogleAPI
 from .video_generator_veo_yunwu_api import VideoGeneratorVeoYunwuAPI
+from .video_generator_comfyui_ltx import VideoGeneratorComfyUILTX
 
 
 __all__ = [
@@ -23,8 +28,12 @@ __all__ = [
     "ImageGeneratorDoubaoSeedreamYunwuAPI",
     "ImageGeneratorNanobananaGoogleAPI",
     "ImageGeneratorNanobananaYunwuAPI",
+    "ImageGeneratorComfyUIFlux",
+    "ComfyUIWorkflowRunner",
+    "ComfyUIWorkflowConfig",
     "RerankerBgeSiliconapi",
     "VideoGeneratorDoubaoSeedanceYunwuAPI",
     "VideoGeneratorVeoGoogleAPI",
     "VideoGeneratorVeoYunwuAPI",
+    "VideoGeneratorComfyUILTX",
 ]

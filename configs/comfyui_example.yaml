@@ -1,0 +1,121 @@
+# ComfyUI 配置文件模板
+# 
+# 使用本地 ComfyUI 工作流调用 Flux.klein 图片生成和 LTX 2.3 视频生成
+#
+# 使用方法:
+#   1. 复制此文件并重命名
+#   2. 修改 workflow_json_path 为你的工作流 JSON 文件路径
+#   3. 修改 input_node_descriptions 描述你的工作流输入节点
+#   4. 在 idea2video.yaml 或 script2video.yaml 中引用此配置
+
+chat_model:
+  init_args:
+    model: doubao-1-5-pro-32k-250115
+    model_provider: openai
+    api_key: <YOUR_API_KEY>
+    base_url: https://ark.cn-beijing.volces.com/api/v3
+
+# ============ 图片生成器配置 (Flux.klein) ============
+image_generator:
+  # 使用新的 ComfyUI Flux 生成器
+  class_path: tools.ImageGeneratorComfyUIFlux
+  init_args:
+    # ComfyUI 服务地址
+    base_url: http://127.0.0.1:8188
+    
+    # 你的 Flux 工作流 JSON 文件路径
+    workflow_json_path: workflows/flux_klein.json
+    
+    # 输入节点描述 - 描述哪些节点是输入，如何填充值
+    # 重要: node_id 必须是你的工作流 JSON 中的实际节点 ID
+    #       支持两种格式:
+    #       - 整数: node_id: 103 (推荐，用于新格式工作流)
+    #       - 字符串: node_id: "103" (兼容旧格式)
+    input_node_descriptions:
+      # 文本提示词 - 连接到 text_g 和 text_l 节点
+      - node_id: 103
+        field: "text_g"
+        source: prompt  # 数据源类型: prompt, reference_image, frame, seed, steps, cfg, width, height
+      
+      - node_id: 104
+        field: "text_l"
+        source: prompt
+      
+      # 参考图片 - 支持多张（用于 IP-Adapter 等）
+      - node_id: 105
+        field: "image"
+        source: reference_image  # 数据源类型
+        max_count: 4  # 最大图片数量限制
+
+# ============ 视频生成器配置 (LTX 2.3) ============
+video_generator:
+  # 使用新的 ComfyUI LTX 视频生成器
+  class_path: tools.VideoGeneratorComfyUILTX
+  init_args:
+    # ComfyUI 服务地址
+    base_url: http://127.0.0.1:8188
+    
+    # 你的 LTX 工作流 JSON 文件路径
+    workflow_json_path: workflows/ltx2_3.json
+    
+    # 最大支持的帧数（LTX 2.3 支持 6+ 帧）
+    max_frames: 6
+    
+    # 输入节点描述 - 描述哪些节点是输入
+    # 注意: 使用整数节点 ID（如 110, 111 等），对应工作流 JSON 中的 nodes[].id
+    input_node_descriptions:
+      # 文本提示词（LTX 格式）
+      - node_id: 110
+        field: "prompt"
+        source: prompt
+      
+      # 多帧输入节点（支持 6+ 帧）
+      # 每个节点对应一个时间点的帧
+      - node_id: 111
+        field: "image1"
+        source: frame
+        index: 0  # 帧索引: 0=首帧
+      
+      - node_id: 112
+        field: "image2"
+        source: frame
+        index: 1
+      
+      - node_id: 113
+        field: "image3"
+        source: frame
+        index: 2
+      
+      - node_id: 114
+        field: "image4"
+        source: frame
+        index: 3
+      
+      - node_id: 115
+        field: "image5"
+        source: frame
+        index: 4
+      
+      - node_id: 116
+        field: "image6"
+        source: frame
+        index: 5
+
+# Prompt 转换配置（可选）
+prompt_converter:
+  enabled: true
+  # 对话转换为 LTX 格式（英文场景 + 中文对话）
+  style: cinematic
+  # 镜头默认时长（秒）
+  default_shot_duration: 5.0
+
+# 中间帧规划配置（可选）
+intermediate_frame_planner:
+  enabled: true
+  # 最大中间帧数量
+  max_intermediate_frames: 4
+
+working_dir: .working_dir/comfyui_video
+
+# 中断步骤（用于调试）
+interrupt_step: null

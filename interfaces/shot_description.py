@@ -2,6 +2,54 @@ from pydantic import BaseModel, Field
 from typing import List, Optional, Literal, Tuple
 
 
+class IntermediateFrame(BaseModel):
+    """
+    中间帧描述
+    
+    用于 LTX 等支持多帧输入的视频生成模型，
+    描述镜头中间关键时刻的帧（角色入场、退场、表情变化等）
+    
+    时间点计算策略：
+    - 根据角色出现/退场时机动态计算
+    - 不使用均匀分布
+    """
+    timing_ratio: float = Field(
+        description="该帧在镜头中的时间位置，0.0=首帧时刻，1.0=尾帧时刻。用于 LTX 多帧输入。",
+        ge=0.0,
+        le=1.0,
+        examples=[0.3, 0.5, 0.7],
+    )
+    timing_seconds: Optional[float] = Field(
+        default=None,
+        description="该帧对应的绝对时间（秒）。如果为 None，则根据 timing_ratio * shot_duration 计算。",
+        ge=0.0,
+    )
+    desc: str = Field(
+        description="该帧的视觉描述，应聚焦于该时刻的关键视觉变化。",
+        examples=[
+            "Bob enters the cafe from the left side, waving to Alice.",
+            "Alice's expression shifts from neutral to surprised.",
+            "Bob turns away and walks toward the door.",
+        ],
+    )
+    visible_character_idxs: List[int] = Field(
+        default=[],
+        description="该帧中可见的角色索引列表。",
+        examples=[[0], [0, 1], [1]],
+    )
+    key_event: Optional[str] = Field(
+        default=None,
+        description="该帧的关键事件，用于提示模型这是重要时刻。",
+        examples=[
+            "character_enters",
+            "character_exits",
+            "expression_change",
+            "camera_pans",
+            "action_peak",
+        ],
+    )
+
+
 class ShotBriefDescription(BaseModel):
     idx: int = Field(
         description="The index of the shot in the sequence, starting from 0.",
@@ -167,6 +215,18 @@ class ShotDescription(BaseModel):
             "[Speaker] Alice (Happy): Hello, how are you?",
             None,
         ],
+    )
+    
+    # 中间帧（用于 LTX 等多帧视频生成模型）
+    intermediate_frames: List[IntermediateFrame] = Field(
+        default_factory=list,
+        description="中间帧描述列表。根据角色出现/退场时机动态计算，用于多角色场景的角色一致性。",
+    )
+    
+    # 镜头时长（秒），用于计算中间帧的绝对时间
+    shot_duration: Optional[float] = Field(
+        default=5.0,
+        description="镜头时长（秒），用于计算中间帧的时间位置。",
     )
     # sound_effect: Optional[str] = Field(
     #     default=None,
