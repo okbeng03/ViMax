@@ -39,6 +39,10 @@ class Script2VideoPipeline:
         self.storyboard_artist = StoryboardArtist(chat_model=self.chat_model)
         self.camera_image_generator = CameraImageGenerator(chat_model=self.chat_model, image_generator=self.image_generator, video_generator=self.video_generator)
         self.reference_image_selector = ReferenceImageSelector(chat_model=self.chat_model)
+        self.prompt_converter = PromptConverter(chat_model=self.chat_model, use_llm_conversion=True)
+        
+        # 检测是否是 LTX 模型（只有 LTX 需要对话融入场景）
+        self.is_ltx_model = "ltx" in type(self.video_generator).__name__.lower()
 
         self.working_dir = working_dir
         os.makedirs(self.working_dir, exist_ok=True)
@@ -246,7 +250,8 @@ class Script2VideoPipeline:
                     # 这里只参考了人物肖像
                     ff_selector_output = await self.reference_image_selector.select_reference_images_and_generate_prompt(
                         available_image_path_and_text_pairs=available_image_path_and_text_pairs,
-                        frame_description=shot_descriptions[first_shot_idx].ff_desc
+                        frame_description=shot_descriptions[first_shot_idx].ff_desc,
+                        only_text_model=True,
                     )
                     with open(ff_selector_output_path, 'w', encoding='utf-8') as f:
                         json.dump(ff_selector_output, f, ensure_ascii=False, indent=4)
@@ -344,9 +349,25 @@ class Script2VideoPipeline:
                 frame_paths.append(os.path.join(self.working_dir, "shots", f"{shot_description.idx}", "last_frame.png"))
 
             print(f"🎬 Starting video generation for shot {shot_description.idx}...")
+            
+            # 根据模型类型决定 prompt 格式
+            if self.is_ltx_model:
+                # LTX 模型：对话必须融入场景叙述中，而不是分开展示
+                # 将 motion_desc 和 audio_desc 融合，使对话出现在正确的动作位置
+                final_prompt = await self.prompt_converter.convert(
+                    audio_desc=shot_description.audio_desc,
+                    visual_desc=shot_description.visual_desc,
+                    motion_desc=shot_description.motion_desc,
+                    shot_duration=shot_description.shot_duration or 5.0,
+                )
+                print(f"📝 LTX Prompt: {final_prompt[:100]}...")
+            else:
+                # 非 LTX 模型：保持 motion_desc 和 audio_desc 分离的原始格式
+                final_prompt = f"{shot_description.motion_desc}\n{shot_description.audio_desc}"
+            
             # 基于运镜生成视频
             video_output = await self.video_generator.generate_single_video(
-                prompt=shot_description.motion_desc + "\n" + shot_description.audio_desc,
+                prompt=final_prompt,
                 reference_image_paths=frame_paths,
             )
             video_output.save(video_path)
@@ -390,7 +411,8 @@ class Script2VideoPipeline:
                 print(f"🔍 Selecting reference images and generating prompt for {frame_type} frame of shot {shot_idx}...")
                 selector_output = await self.reference_image_selector.select_reference_images_and_generate_prompt(
                     available_image_path_and_text_pairs=available_image_path_and_text_pairs,
-                    frame_description=frame_desc
+                    frame_description=frame_desc,
+                    only_text_model=True,
                 )
                 with open(selector_output_path, 'w', encoding='utf-8') as f:
                     json.dump(selector_output, f, ensure_ascii=False, indent=4)

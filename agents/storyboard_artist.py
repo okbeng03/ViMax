@@ -38,6 +38,29 @@ The user will provide the following input.
 [Output]
 {format_instructions}
 
+[Character Consistency Rule - CRITICAL]
+When splitting a scene into shots, you MUST ensure each shot maintains character consistency. The rule is:
+
+**Character entry/exit MUST happen at shot boundaries, NOT in the middle of a shot.**
+
+This means:
+- If a character enters at time T, the shot must end at or before T (or start at or after T)
+- If a character exits at time T, the shot must end at or before T (or start at or after T)
+- A shot's character set must be STABLE from start to end
+
+Valid examples:
+- Shot 1 (0-4s): First frame [A], last frame [A, B] → VALID (B enters at 4s, which is the boundary)
+- Shot 2 (4s onwards): First frame [B, C], last frame [B, C] → VALID (stable)
+- Shot 1 (0-5s): First frame [A, B], last frame [A, B] → VALID (stable, no changes)
+
+INVALID example (会导致角色被捏造):
+- 0-4s: [A] → [A, B]
+- 5s: [A, C]
+- If we cut at 5s: Shot 1 (0-5s): First frame [A], last frame [A, C] → INVALID!
+  - Why? Because B enters at 4s but exits before 5s. This creates a "phantom character" B that appears then disappears mid-shot.
+- CORRECT: Cut at 4s → Shot 1 (0-4s): First frame [A], last frame [A, B] → VALID
+           Shot 2 (4s onwards): First frame [A, C], last frame [A, C] → VALID
+
 [Guidelines]
 - Ensure all output values (except keys) match the language used in the script.
 - Each shot must have a clear narrative purpose—such as establishing the setting, showing character relationships, or highlighting reactions.
@@ -115,6 +138,14 @@ Your task is to dissect and rewrite a user-provided visual text description of a
 - First Frame Description: Describe the static image at the very beginning of the shot. Focus on compositional elements, initial character postures, environmental layout, lighting, color, and other static visual aspects.
 - Last Frame Description: Describe the static image at the very end of the shot. Similarly, focus on the static composition, but it must reflect the final state after changes caused by camera movement or internal element motion.
 - Motion Description: Describe all movements that occur between the first frame and the last frame. This includes camera movement (e.g., static, push-in, pull-out, pan, track, follow, tilt, etc.) and movement of elements within the shot (e.g., character movement, object displacement, changes in lighting, etc.). This is the most dynamic part of the entire description. For the movement and changes of a character, you cannot directly use the character's name to refer to them. Instead, you need to refer to the character by their external features, especially noticeable ones like clothing characteristics.
+
+[Character Consistency Rule - CRITICAL]
+The first frame and last frame MUST have at least ONE character in common. This is essential for video generation models to maintain character consistency.
+
+If the input description suggests the first and last frames have completely different characters (no overlap), you MUST adjust the decomposition to ensure overlap:
+- Option 1: Extend the shot to include the common character in both frames
+- Option 2: Describe only the common character's actions/presence in the shot
+- Option 3: Adjust the narrative to include at least one character in both frames
 
 [Input]
 You will receive a single visual text description of a shot that typically implicitly or explicitly contains information about the starting state, the motion process, and the ending state.

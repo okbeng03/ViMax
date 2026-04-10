@@ -169,9 +169,24 @@ human_prompt_template_convert_dialogue = \
 {visual_desc}
 </ORIGINAL_VISUAL_DESC>
 
+<ORIGINAL_MOTION_DESC>
+{motion_desc}
+</ORIGINAL_MOTION_DESC>
+
 <SHOT_DURATION>
 {shot_duration} seconds
 </SHOT_DURATION>
+
+[IMPORTANT]
+Your task is to create a unified scene description that:
+1. Starts with scene setting (from visual_desc)
+2. Describes actions WITH dialogues integrated (from motion_desc + audio_desc combined)
+
+Example transformation:
+- motion_desc: "Camera pans slowly. Alice turns around."
+- audio_desc: "Alice: Hello Bob!"
+- WRONG: "Camera pans slowly. Alice turns around.\n[Speaker] Alice: Hello Bob!"
+- CORRECT: "Camera pans slowly. Alice turns around and waves, saying 'Hello Bob!'"
 """
 
 
@@ -350,7 +365,7 @@ class PromptConverter:
         # 移除镜头类型描述（如 "Medium shot", "Close-up" 等）
         patterns_to_remove = [
             r'^(Extreme )?(Long|Wide|Medium|Close-up|Extreme close-up|Establishing) shot[.,]?',
-            r'^(Low|High|Eye-level|Bird'?s-eye|Worm'?s-eye) angle[.,]?',
+            r"^(Low|High|Eye-level|Bird'?s-eye|Worm'?s-eye) angle[.,]?",
             r'^(Static|Dolly in|Dolly out|Pan|Tilt|Tracking|Handheld) [a-z]+[.,]?',
         ]
         
@@ -370,22 +385,25 @@ class PromptConverter:
         self,
         audio_desc: str,
         visual_desc: str,
+        motion_desc: str = "",
         shot_duration: float = 5.0,
         retry_timeout: int = 60,
     ) -> str:
         """
         使用 LLM 进行 prompt 转换
         
-        适用于复杂场景的精确转换
+        适用于复杂场景的精确转换。
+        将对话融入场景叙述中，使对话出现在正确的动作位置。
         
         Args:
-            audio_desc: 音频描述
-            visual_desc: 视觉描述
+            audio_desc: 音频描述（对话）
+            visual_desc: 视觉描述（场景设定）
+            motion_desc: 动作描述（镜头运动和角色动作）
             shot_duration: 镜头时长（秒）
             retry_timeout: 超时时间
         
         Returns:
-            LTX 格式的 prompt
+            LTX 格式的 prompt，对话已融入动作描述中
         """
         if not self.chat_model:
             logger.warning("No chat model provided, falling back to rule-based conversion")
@@ -401,6 +419,7 @@ class PromptConverter:
                 audio_desc=audio_desc or "(No audio)",
                 visual_desc=visual_desc or "(No visual description)",
                 shot_duration=shot_duration,
+                motion_desc=motion_desc or "(No motion description)",
             )),
         ]
         
@@ -428,6 +447,7 @@ class PromptConverter:
         self,
         audio_desc: str,
         visual_desc: str,
+        motion_desc: str = "",
         shot_duration: float = 5.0,
     ) -> str:
         """
@@ -437,13 +457,16 @@ class PromptConverter:
         - 简单场景：规则转换
         - 复杂场景：LLM 转换
         
+        将对话融入到动作描述中，使对话出现在正确的场景位置。
+        
         Args:
-            audio_desc: 音频描述
-            visual_desc: 视觉描述
+            audio_desc: 音频描述（对话）
+            visual_desc: 视觉描述（场景设定）
+            motion_desc: 动作描述（镜头运动和角色动作）
             shot_duration: 镜头时长（秒）
         
         Returns:
-            LTX 格式的 prompt
+            LTX 格式的 prompt，对话已融入动作描述中
         """
         # 检查是否需要 LLM 转换
         parsed = self.parse_audio_description(audio_desc)
@@ -457,7 +480,7 @@ class PromptConverter:
         )
         
         if needs_llm and self.chat_model:
-            return await self.llm_convert(audio_desc, visual_desc, shot_duration)
+            return await self.llm_convert(audio_desc, visual_desc, motion_desc, shot_duration)
         else:
             return self.rule_based_convert(audio_desc, visual_desc, shot_duration)
 
@@ -482,7 +505,7 @@ async def convert_to_ltx_format(
         LTX 格式的 prompt
     """
     converter = PromptConverter(chat_model=chat_model)
-    return await converter.convert(audio_desc, visual_desc, shot_duration)
+    return await converter.convert(audio_desc, visual_desc, motion_desc="", shot_duration=shot_duration)
 
 
 # 示例用法

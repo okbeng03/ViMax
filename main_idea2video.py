@@ -11,11 +11,11 @@ logging.basicConfig(
 # SET YOUR OWN IDEA, USER REQUIREMENT, AND STYLE HERE
 idea = \
     """
-一个穿着有卡皮巴拉图案的泳衣黑色头发6岁中国男孩，和他的动物好朋友卡皮巴拉一起游戏泼水的游玩故事。
+小豆丁在书房看到了一本发光的古书，里面走出字博士，他们开启了汉字演变教学。
 """
 user_requirement = \
     """
-观众是儿童，3个场景。每个场景应不超过5张画面。
+观众是儿童(3到8岁)，不超过5分钟。
 """
 style = "动漫风格"
 

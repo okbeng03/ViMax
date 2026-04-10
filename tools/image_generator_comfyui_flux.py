@@ -3,25 +3,10 @@ ImageGeneratorComfyUIFlux: 使用 Flux.klein 模型生成图片
 
 通过 ComfyUI 工作流调用本地部署的 Flux.klein 模型
 
-支持的 ComfyUI 工作流格式:
-1. 新格式 (nodes 数组):
-   {
-       "id": "...",
-       "nodes": [{"id": 103, ...}, ...]
-   }
-2. 旧格式 (直接节点):
-   {"103": {...}, "105": {...}, ...}
-
 Usage:
     # 方式1: 直接实例化
     generator = ImageGeneratorComfyUIFlux(
-        base_url="http://127.0.0.1:8188",
-        workflow_json_path="workflows/flux_klein.json",
-        input_node_descriptions=[
-            {"node_id": 103, "field": "text_g", "source": "prompt"},
-            {"node_id": 104, "field": "text_l", "source": "prompt"},
-            {"node_id": 105, "field": "image", "source": "reference_image", "max_count": 4},
-        ]
+        base_url="http://127.0.0.1:8188"
     )
     
     image = await generator.generate_single_image(
@@ -34,11 +19,11 @@ Usage:
 """
 
 import logging
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
-
+import json
+import uuid
+import random
+from typing import Any, List, Optional
 from tenacity import retry, stop_after_attempt
-
 from interfaces.image_output import ImageOutput
 from tools.comfyui_workflow_runner import ComfyUIWorkflowRunner
 from utils.retry import after_func
@@ -47,22 +32,23 @@ from utils.rate_limiter import RateLimiter
 
 logger = logging.getLogger(__name__)
 
+text_to_image_workflow_path = "workflows/flux2_klein_text_to_image.json"
+image_to_image_workflow_path = "workflows/flux2_klein_8image.json"
+text_to_image_output_node_ids = ["9"]
+image_to_image_output_node_ids = ["94"]
 
 class ImageGeneratorComfyUIFlux:
     """
     Flux.klein 图片生成器
     
     基于 ComfyUI 工作流，支持：
-    - 文本到图片生成
-    - 参考图片输入（支持多张）
-    - IP-Adapter 等控制网络
+    - 文生图
+    - 图生图：多参考图片输入（支持多张）
     """
     
     def __init__(
         self,
         base_url: str = "http://127.0.0.1:8188",
-        workflow_json_path: str = "workflows/flux_klein.json",
-        input_node_descriptions: Optional[List[Dict[str, Any]]] = None,
         rate_limiter: Optional[RateLimiter] = None,
     ):
         """
@@ -70,42 +56,122 @@ class ImageGeneratorComfyUIFlux:
         
         Args:
             base_url: ComfyUI 服务地址
-            workflow_json_path: Flux 工作流 JSON 文件路径
-            input_node_descriptions: 输入节点描述列表
             rate_limiter: 速率限制器
         """
-        # 默认的 Flux 工作流输入节点配置（使用整数节点 ID）
-        default_input_descriptions = input_node_descriptions or [
-            {"node_id": 103, "field": "text_g", "source": "prompt"},
-            {"node_id": 104, "field": "text_l", "source": "prompt"},
-            {"node_id": 105, "field": "image", "source": "reference_image", "max_count": 4},
-        ]
         
-        self.runner = ComfyUIWorkflowRunner(
-            base_url=base_url,
-            workflow_json_path=workflow_json_path,
-            input_node_descriptions=default_input_descriptions,
-            output_node_ids=[],  # 自动检测
-            rate_limiter=rate_limiter,
-        )
-        
-        logger.info(f"Initialized ImageGeneratorComfyUIFlux with workflow: {workflow_json_path}")
+        self.base_url = base_url
+        self.rate_limiter = rate_limiter
     
     @classmethod
-    def from_config(cls, config: Dict[str, Any], rate_limiter: Optional[RateLimiter] = None) -> "ImageGeneratorComfyUIFlux":
+    def from_config(cls, config: dict[str, Any], rate_limiter: Optional[RateLimiter] = None) -> "ImageGeneratorComfyUIFlux":
         """从配置字典创建实例"""
         return cls(
             base_url=config.get("base_url", "http://127.0.0.1:8188"),
-            workflow_json_path=config.get("workflow_json_path", "workflows/flux_klein.json"),
-            input_node_descriptions=config.get("input_node_descriptions"),
             rate_limiter=rate_limiter,
         )
+    
+    
+    async def load_t2i_workflow(self, runner: ComfyUIWorkflowRunner, prompt: str, width: int, height: int) -> dict[str, Any]:
+        """加载文生图工作流"""
+    
+        workflow = runner.load_workflow(text_to_image_workflow_path)
+        workflow["9"]["inputs"]["filename_prefix"] = str(uuid.uuid4())
+        workflow["76"]["inputs"]["value"] = prompt
+        workflow["75:68"]["inputs"]["value"] = width
+        workflow["75:69"]["inputs"]["value"] = height
+        workflow["75:73"]["inputs"]["noise_seed"] = random.randint(1, 2**32 - 1)
+        
+        return workflow
+    
+    async def load_i2i_workflow(self, runner: ComfyUIWorkflowRunner, prompt: str, reference_image_paths: List[str] = None) -> dict[str, Any]:
+        """加载图生图工作流"""
+
+        workflow = runner.load_workflow(image_to_image_workflow_path)
+        workflow["94"]["inputs"]["filename_prefix"] = str(uuid.uuid4())
+        workflow["92:113"]["inputs"]["text"] = prompt
+        workflow["92:105"]["inputs"]["noise_seed"] = random.randint(1, 2**32 - 1)
+        
+        # 删除对应节点
+        reference_images_len = len(reference_image_paths)
+        image_nodes = ["76", "81", "158", "157", "160", "159", "162", "161"]
+        remove_image_nodes = image_nodes[reference_images_len:]
+        load_image_nodes = image_nodes[:reference_images_len]
+        group_image_nodes = [
+            {
+                "image": "92:110",
+                "vae_encode": "92:165",
+                "positive_latent": "92:166",
+                "negative_latent": "92:167",
+            },
+            {
+                "image": "92:168",
+                "vae_encode": "92:169",
+                "positive_latent": "92:170",
+                "negative_latent": "92:171",
+            },
+            {
+                "image": "92:172",
+                "vae_encode": "92:173",
+                "positive_latent": "92:174",
+                "negative_latent": "92:175",
+            },
+            {
+                "image": "92:176",
+                "vae_encode": "92:177",
+                "positive_latent": "92:178",
+                "negative_latent": "92:179",
+            },
+            {
+                "image": "92:180",
+                "vae_encode": "92:181",
+                "positive_latent": "92:182",
+                "negative_latent": "92:183",
+            },
+            {
+                "image": "92:184",
+                "vae_encode": "92:185",
+                "positive_latent": "92:186",
+                "negative_latent": "92:187",
+            },
+            {
+                "image": "92:188",
+                "vae_encode": "92:189",
+                "positive_latent": "92:190",
+                "negative_latent": "92:191",
+            },
+            {
+                "image": "92:192",
+                "vae_encode": "92:193",
+                "positive_latent": "92:194",
+                "negative_latent": "92:195",
+            },
+        ]
+        retain_group_image_nodes = group_image_nodes[:reference_images_len]
+        remove_group_image_nodes = group_image_nodes[reference_images_len:]
+        
+        for i, image_path in enumerate(reference_image_paths):
+            image_name = await runner.upload_image(image_path)
+            workflow[load_image_nodes[i]]["inputs"]["image"] = image_name
+
+        for node_id in remove_image_nodes:
+            workflow.pop(node_id, None)
+        for group in remove_group_image_nodes:
+            for node_id in group.values():
+                workflow.pop(node_id, None)
+            
+        workflow["92:114"]["inputs"]["positive"] = [retain_group_image_nodes[-1]["positive_latent"], 0]
+        workflow["92:114"]["inputs"]["negative"] = [retain_group_image_nodes[-1]["negative_latent"], 0]
+
+        return workflow
     
     @retry(stop=stop_after_attempt(3), after=after_func, reraise=True)
     async def generate_single_image(
         self,
         prompt: str,
+        *,
         reference_image_paths: List[str] = None,
+        width: int = 2048,
+        height: int = 2048,
         **kwargs,
     ) -> ImageOutput:
         """
@@ -115,35 +181,46 @@ class ImageGeneratorComfyUIFlux:
             prompt: 图片描述文本
             reference_image_paths: 参考图片路径列表（用于风格一致性）
             **kwargs: 其他参数（seed, steps 等，传递给工作流）
-        
+            
         Returns:
             ImageOutput: 生成的图片输出
         """
-        logger.info("Generating image with Flux.klein...")
+        logger.info(f"Generating image with Flux.klein... {prompt}")
         
-        # 执行工作流
-        outputs = await self.runner.run(
-            prompt=prompt,
-            reference_image_paths=reference_image_paths or [],
-            **kwargs,
+        
+        runner = ComfyUIWorkflowRunner(
+            base_url=self.base_url,
+            rate_limiter=self.rate_limiter,
         )
+        workflow = {}
         
+        if reference_image_paths:
+            logger.info("==========Using reference images for style consistency================")
+            workflow = await self.load_i2i_workflow(runner=runner, prompt=prompt, reference_image_paths=reference_image_paths)
+        else:
+            workflow = await self.load_t2i_workflow(runner=runner, prompt=prompt, width=width, height=height)
+        # print("========================\n", json.dumps(workflow, indent=4), "\n========================")
+        # 执行工作流
+        outputs = await runner.run(
+            workflow=workflow,
+            output_node_ids=image_to_image_output_node_ids if reference_image_paths else text_to_image_output_node_ids,
+        )
         # 提取输出路径
-        output_paths = self.runner.get_output_paths(outputs)
+        output_paths = runner.get_output_paths(outputs)
         
         if not output_paths:
             raise RuntimeError("No image output generated")
         
         # 获取第一个输出节点的结果
         first_output = list(output_paths.values())[0]
-        
+
         if isinstance(first_output, list) and len(first_output) > 0:
             # 输出是图片路径列表
             image_path = first_output[0]
-            return ImageOutput(fmt="pil", ext="png", data=image_path)
+            return ImageOutput(fmt="url", ext="png", data=image_path)
         elif isinstance(first_output, str):
             # 输出是单个文件路径
-            return ImageOutput(fmt="pil", ext="png", data=first_output)
+            return ImageOutput(fmt="url", ext="png", data=first_output)
         else:
             raise RuntimeError(f"Unexpected output format: {first_output}")
     

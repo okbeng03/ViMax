@@ -8,6 +8,7 @@ from langchain.chat_models import init_chat_model
 from utils.image import image_path_to_b64
 
 from utils.retry import after_func
+from utils.provider_presets import resolve_chat_model_config
 
 system_prompt_template_select_reference_images_only_text = \
 """
@@ -229,15 +230,13 @@ class ReferenceImageSelector:
         self,
         chat_model,
     ):
-        # TODO:: 临时使用 qwen3-max 模型
-        self.chat_model = init_chat_model(
-            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
-            model="qwen3-max",
-            model_provider="openai",
-            api_key="sk-606ed8b24a524e80a06eca396d5aeb2d"
+        config = resolve_chat_model_config(
+            {
+                "model_provider": "qwen",
+                "model": "qwen3.5-plus",
+            }
         )
-        # self.chat_model = chat_model
-
+        self.chat_model = init_chat_model(**config)
 
     @retry(
         stop=stop_after_attempt(3),
@@ -247,12 +246,13 @@ class ReferenceImageSelector:
         self,
         available_image_path_and_text_pairs: List[Tuple[str, str]],
         frame_description: str,
+        only_text_model: bool = False,
     ):
         filtered_image_path_and_text_pairs = available_image_path_and_text_pairs
 
         # 1. filter images using text-only model
         # 如果参考图片数量大于等于8张，则使用text-only model进行过滤，得到8张图片
-        if len(available_image_path_and_text_pairs) >= 8:
+        if len(available_image_path_and_text_pairs) >= 8 or only_text_model:
             human_content = []
             for idx, (_, text) in enumerate(available_image_path_and_text_pairs):
                 human_content.append({
@@ -277,10 +277,16 @@ class ReferenceImageSelector:
                 filtered_image_path_and_text_pairs = [available_image_path_and_text_pairs[i] for i in ref.ref_image_indices]
                 logging.info(f"Filtered image idx:{ref.ref_image_indices}")
                 
+                if only_text_model:
+                    return {
+                        "ref_image_indices": filtered_image_path_and_text_pairs,
+                        "text_prompt": ref.text_prompt,
+                    }
+                
             except Exception as e:
                 logging.error(f"Error get image prompt: \n{e}")
                 raise e
-
+        
         # 2. filter images using multimodal model
         human_content = []
         for idx, (image_path, text) in enumerate(filtered_image_path_and_text_pairs):

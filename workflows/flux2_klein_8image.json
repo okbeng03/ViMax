@@ -1,0 +1,776 @@
+{
+  "76": {
+    "inputs": {
+      "image": "robed_women.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "image1"
+    }
+  },
+  "81": {
+    "inputs": {
+      "image": "pink_tone_chair.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "image2"
+    }
+  },
+  "94": {
+    "inputs": {
+      "filename_prefix": "Flux2-Klein-4b-base",
+      "images": [
+        "92:104",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "保存图像"
+    }
+  },
+  "157": {
+    "inputs": {
+      "image": "pink_tone_chair.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "image4"
+    }
+  },
+  "158": {
+    "inputs": {
+      "image": "robed_women.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "image3"
+    }
+  },
+  "159": {
+    "inputs": {
+      "image": "pink_tone_chair.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "image6"
+    }
+  },
+  "160": {
+    "inputs": {
+      "image": "robed_women.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "image5"
+    }
+  },
+  "161": {
+    "inputs": {
+      "image": "pink_tone_chair.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "image8"
+    }
+  },
+  "162": {
+    "inputs": {
+      "image": "robed_women.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "image7"
+    }
+  },
+  "92:102": {
+    "inputs": {
+      "sampler_name": "euler"
+    },
+    "class_type": "KSamplerSelect",
+    "_meta": {
+      "title": "K采样器选择"
+    }
+  },
+  "92:104": {
+    "inputs": {
+      "samples": [
+        "92:103",
+        0
+      ],
+      "vae": [
+        "92:107",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE解码"
+    }
+  },
+  "92:105": {
+    "inputs": {
+      "noise_seed": 468891862088407
+    },
+    "class_type": "RandomNoise",
+    "_meta": {
+      "title": "随机噪波"
+    }
+  },
+  "92:106": {
+    "inputs": {
+      "unet_name": "flux-2-klein-base-4b-fp8.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "UNet加载器"
+    }
+  },
+  "92:108": {
+    "inputs": {
+      "image": [
+        "92:110",
+        0
+      ]
+    },
+    "class_type": "GetImageSize",
+    "_meta": {
+      "title": "获取图像尺寸"
+    }
+  },
+  "92:111": {
+    "inputs": {
+      "clip_name": "qwen_3_4b.safetensors",
+      "type": "flux2",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "加载CLIP"
+    }
+  },
+  "92:115": {
+    "inputs": {
+      "steps": 20,
+      "width": [
+        "92:108",
+        0
+      ],
+      "height": [
+        "92:108",
+        1
+      ]
+    },
+    "class_type": "Flux2Scheduler",
+    "_meta": {
+      "title": "Flux2调度器"
+    }
+  },
+  "92:109": {
+    "inputs": {
+      "width": [
+        "92:108",
+        0
+      ],
+      "height": [
+        "92:108",
+        1
+      ],
+      "batch_size": 1
+    },
+    "class_type": "EmptyFlux2LatentImage",
+    "_meta": {
+      "title": "空Latent图像（Flux2）"
+    }
+  },
+  "92:114": {
+    "inputs": {
+      "cfg": 5,
+      "model": [
+        "92:106",
+        0
+      ],
+      "positive": [
+        "92:194",
+        0
+      ],
+      "negative": [
+        "92:195",
+        0
+      ]
+    },
+    "class_type": "CFGGuider",
+    "_meta": {
+      "title": "CFG引导器"
+    }
+  },
+  "92:103": {
+    "inputs": {
+      "noise": [
+        "92:105",
+        0
+      ],
+      "guider": [
+        "92:114",
+        0
+      ],
+      "sampler": [
+        "92:102",
+        0
+      ],
+      "sigmas": [
+        "92:115",
+        0
+      ],
+      "latent_image": [
+        "92:109",
+        0
+      ]
+    },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {
+      "title": "自定义采样器（高级）"
+    }
+  },
+  "92:113": {
+    "inputs": {
+      "text": "A stylish young woman with dark skin wearing a plush deep emerald green bathrobe, light pink towel turban, and red heart-shaped sunglasses, seated on a light-colored rattan chair with soft pink cushions, positioned in front of a textured dusty rose pink wall with an arched alcove, large tropical plants with broad dark green leaves framing both sides, woven straw baskets on the floor, remove any existing shoes from the background, only the woman's beige woven sandals visible in the foreground, soft natural lighting casting gentle shadows, warm bohemian chic aesthetic, professional fashion photography",
+      "clip": [
+        "92:111",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Positive Prompt)"
+    }
+  },
+  "92:87": {
+    "inputs": {
+      "text": "",
+      "clip": [
+        "92:111",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode ( Negative Prompt)"
+    }
+  },
+  "92:165": {
+    "inputs": {
+      "pixels": [
+        "92:110",
+        0
+      ],
+      "vae": [
+        "92:107",
+        0
+      ]
+    },
+    "class_type": "VAEEncode",
+    "_meta": {
+      "title": "VAE编码"
+    }
+  },
+  "92:110": {
+    "inputs": {
+      "upscale_method": "nearest-exact",
+      "megapixels": 1,
+      "resolution_steps": 1,
+      "image": [
+        "76",
+        0
+      ]
+    },
+    "class_type": "ImageScaleToTotalPixels",
+    "_meta": {
+      "title": "group_image1"
+    }
+  },
+  "92:169": {
+    "inputs": {
+      "pixels": [
+        "92:168",
+        0
+      ],
+      "vae": [
+        "92:107",
+        0
+      ]
+    },
+    "class_type": "VAEEncode",
+    "_meta": {
+      "title": "VAE编码"
+    }
+  },
+  "92:173": {
+    "inputs": {
+      "pixels": [
+        "92:172",
+        0
+      ],
+      "vae": [
+        "92:107",
+        0
+      ]
+    },
+    "class_type": "VAEEncode",
+    "_meta": {
+      "title": "VAE编码"
+    }
+  },
+  "92:177": {
+    "inputs": {
+      "pixels": [
+        "92:176",
+        0
+      ],
+      "vae": [
+        "92:107",
+        0
+      ]
+    },
+    "class_type": "VAEEncode",
+    "_meta": {
+      "title": "VAE编码"
+    }
+  },
+  "92:181": {
+    "inputs": {
+      "pixels": [
+        "92:180",
+        0
+      ],
+      "vae": [
+        "92:107",
+        0
+      ]
+    },
+    "class_type": "VAEEncode",
+    "_meta": {
+      "title": "VAE编码"
+    }
+  },
+  "92:185": {
+    "inputs": {
+      "pixels": [
+        "92:184",
+        0
+      ],
+      "vae": [
+        "92:107",
+        0
+      ]
+    },
+    "class_type": "VAEEncode",
+    "_meta": {
+      "title": "VAE编码"
+    }
+  },
+  "92:189": {
+    "inputs": {
+      "pixels": [
+        "92:188",
+        0
+      ],
+      "vae": [
+        "92:107",
+        0
+      ]
+    },
+    "class_type": "VAEEncode",
+    "_meta": {
+      "title": "VAE编码"
+    }
+  },
+  "92:193": {
+    "inputs": {
+      "pixels": [
+        "92:192",
+        0
+      ],
+      "vae": [
+        "92:107",
+        0
+      ]
+    },
+    "class_type": "VAEEncode",
+    "_meta": {
+      "title": "VAE编码"
+    }
+  },
+  "92:168": {
+    "inputs": {
+      "upscale_method": "nearest-exact",
+      "megapixels": 1,
+      "resolution_steps": 1,
+      "image": [
+        "81",
+        0
+      ]
+    },
+    "class_type": "ImageScaleToTotalPixels",
+    "_meta": {
+      "title": "group_image2"
+    }
+  },
+  "92:172": {
+    "inputs": {
+      "upscale_method": "nearest-exact",
+      "megapixels": 1,
+      "resolution_steps": 1,
+      "image": [
+        "158",
+        0
+      ]
+    },
+    "class_type": "ImageScaleToTotalPixels",
+    "_meta": {
+      "title": "group_image3"
+    }
+  },
+  "92:176": {
+    "inputs": {
+      "upscale_method": "nearest-exact",
+      "megapixels": 1,
+      "resolution_steps": 1,
+      "image": [
+        "157",
+        0
+      ]
+    },
+    "class_type": "ImageScaleToTotalPixels",
+    "_meta": {
+      "title": "group_image4"
+    }
+  },
+  "92:180": {
+    "inputs": {
+      "upscale_method": "nearest-exact",
+      "megapixels": 1,
+      "resolution_steps": 1,
+      "image": [
+        "160",
+        0
+      ]
+    },
+    "class_type": "ImageScaleToTotalPixels",
+    "_meta": {
+      "title": "group_image5"
+    }
+  },
+  "92:184": {
+    "inputs": {
+      "upscale_method": "nearest-exact",
+      "megapixels": 1,
+      "resolution_steps": 1,
+      "image": [
+        "159",
+        0
+      ]
+    },
+    "class_type": "ImageScaleToTotalPixels",
+    "_meta": {
+      "title": "group_image6"
+    }
+  },
+  "92:188": {
+    "inputs": {
+      "upscale_method": "nearest-exact",
+      "megapixels": 1,
+      "resolution_steps": 1,
+      "image": [
+        "162",
+        0
+      ]
+    },
+    "class_type": "ImageScaleToTotalPixels",
+    "_meta": {
+      "title": "group_image7"
+    }
+  },
+  "92:192": {
+    "inputs": {
+      "upscale_method": "nearest-exact",
+      "megapixels": 1,
+      "resolution_steps": 1,
+      "image": [
+        "161",
+        0
+      ]
+    },
+    "class_type": "ImageScaleToTotalPixels",
+    "_meta": {
+      "title": "group_image8"
+    }
+  },
+  "92:166": {
+    "inputs": {
+      "conditioning": [
+        "92:113",
+        0
+      ],
+      "latent": [
+        "92:165",
+        0
+      ]
+    },
+    "class_type": "ReferenceLatent",
+    "_meta": {
+      "title": "参考Latent"
+    }
+  },
+  "92:167": {
+    "inputs": {
+      "conditioning": [
+        "92:87",
+        0
+      ],
+      "latent": [
+        "92:165",
+        0
+      ]
+    },
+    "class_type": "ReferenceLatent",
+    "_meta": {
+      "title": "参考Latent"
+    }
+  },
+  "92:107": {
+    "inputs": {
+      "vae_name": "flux2-vae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "加载VAE"
+    }
+  },
+  "92:170": {
+    "inputs": {
+      "conditioning": [
+        "92:166",
+        0
+      ],
+      "latent": [
+        "92:169",
+        0
+      ]
+    },
+    "class_type": "ReferenceLatent",
+    "_meta": {
+      "title": "参考Latent"
+    }
+  },
+  "92:171": {
+    "inputs": {
+      "conditioning": [
+        "92:167",
+        0
+      ],
+      "latent": [
+        "92:169",
+        0
+      ]
+    },
+    "class_type": "ReferenceLatent",
+    "_meta": {
+      "title": "参考Latent"
+    }
+  },
+  "92:174": {
+    "inputs": {
+      "conditioning": [
+        "92:170",
+        0
+      ],
+      "latent": [
+        "92:173",
+        0
+      ]
+    },
+    "class_type": "ReferenceLatent",
+    "_meta": {
+      "title": "参考Latent"
+    }
+  },
+  "92:175": {
+    "inputs": {
+      "conditioning": [
+        "92:171",
+        0
+      ],
+      "latent": [
+        "92:173",
+        0
+      ]
+    },
+    "class_type": "ReferenceLatent",
+    "_meta": {
+      "title": "参考Latent"
+    }
+  },
+  "92:178": {
+    "inputs": {
+      "conditioning": [
+        "92:174",
+        0
+      ],
+      "latent": [
+        "92:177",
+        0
+      ]
+    },
+    "class_type": "ReferenceLatent",
+    "_meta": {
+      "title": "参考Latent"
+    }
+  },
+  "92:179": {
+    "inputs": {
+      "conditioning": [
+        "92:175",
+        0
+      ],
+      "latent": [
+        "92:177",
+        0
+      ]
+    },
+    "class_type": "ReferenceLatent",
+    "_meta": {
+      "title": "参考Latent"
+    }
+  },
+  "92:182": {
+    "inputs": {
+      "conditioning": [
+        "92:178",
+        0
+      ],
+      "latent": [
+        "92:181",
+        0
+      ]
+    },
+    "class_type": "ReferenceLatent",
+    "_meta": {
+      "title": "参考Latent"
+    }
+  },
+  "92:183": {
+    "inputs": {
+      "conditioning": [
+        "92:179",
+        0
+      ],
+      "latent": [
+        "92:181",
+        0
+      ]
+    },
+    "class_type": "ReferenceLatent",
+    "_meta": {
+      "title": "参考Latent"
+    }
+  },
+  "92:186": {
+    "inputs": {
+      "conditioning": [
+        "92:182",
+        0
+      ],
+      "latent": [
+        "92:185",
+        0
+      ]
+    },
+    "class_type": "ReferenceLatent",
+    "_meta": {
+      "title": "参考Latent"
+    }
+  },
+  "92:187": {
+    "inputs": {
+      "conditioning": [
+        "92:183",
+        0
+      ],
+      "latent": [
+        "92:185",
+        0
+      ]
+    },
+    "class_type": "ReferenceLatent",
+    "_meta": {
+      "title": "参考Latent"
+    }
+  },
+  "92:190": {
+    "inputs": {
+      "conditioning": [
+        "92:186",
+        0
+      ],
+      "latent": [
+        "92:189",
+        0
+      ]
+    },
+    "class_type": "ReferenceLatent",
+    "_meta": {
+      "title": "参考Latent"
+    }
+  },
+  "92:191": {
+    "inputs": {
+      "conditioning": [
+        "92:187",
+        0
+      ],
+      "latent": [
+        "92:189",
+        0
+      ]
+    },
+    "class_type": "ReferenceLatent",
+    "_meta": {
+      "title": "参考Latent"
+    }
+  },
+  "92:194": {
+    "inputs": {
+      "conditioning": [
+        "92:190",
+        0
+      ],
+      "latent": [
+        "92:193",
+        0
+      ]
+    },
+    "class_type": "ReferenceLatent",
+    "_meta": {
+      "title": "参考Latent"
+    }
+  },
+  "92:195": {
+    "inputs": {
+      "conditioning": [
+        "92:191",
+        0
+      ],
+      "latent": [
+        "92:193",
+        0
+      ]
+    },
+    "class_type": "ReferenceLatent",
+    "_meta": {
+      "title": "参考Latent"
+    }
+  }
+}

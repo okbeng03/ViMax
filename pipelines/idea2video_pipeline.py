@@ -49,7 +49,7 @@ class Idea2VideoPipeline:
             image_generator=backend.image_generator,
             video_generator=backend.video_generator,
             working_dir=config["working_dir"],
-            interrupt_step=interrupt_step,
+            interrupt_step=config["interrupt_step"],
         )
 
     async def extract_characters(
