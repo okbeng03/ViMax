@@ -18,13 +18,13 @@ TODO:: 基于规则的基本不可用，太死了；另外prompt是不是缺少�
 
 import re
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import List, Optional
 from pydantic import BaseModel, Field
+from langchain.chat_models import init_chat_model
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.output_parsers import PydanticOutputParser
-from tenacity import retry, stop_after_attempt
 
-from utils.retry import after_func
+from utils.provider_presets import resolve_chat_model_config
 
 
 logger = logging.getLogger(__name__)
@@ -213,7 +213,6 @@ class PromptConverter:
     
     def __init__(
         self,
-        chat_model=None,
         use_llm_conversion: bool = True,
     ):
         """
@@ -223,7 +222,13 @@ class PromptConverter:
             chat_model: 可选的 LLM 模型用于复杂转换
             use_llm_conversion: 是否使用 LLM 进行转换（复杂场景），否则使用规则转换
         """
-        self.chat_model = chat_model
+        config = resolve_chat_model_config(
+            {
+                "model_provider": "qwen",
+                "model": "qwen3.5-plus",
+            }
+        )
+        self.chat_model = init_chat_model(**config)
         self.use_llm_conversion = use_llm_conversion
     
     def parse_audio_description(self, audio_desc: str) -> ParsedAudioInfo:
@@ -380,14 +385,13 @@ class PromptConverter:
         
         return scene if scene else None
     
-    @retry(stop=stop_after_attempt(3), after=after_func)
     async def llm_convert(
         self,
         audio_desc: str,
         visual_desc: str,
         motion_desc: str = "",
         shot_duration: float = 5.0,
-        retry_timeout: int = 60,
+        retry_timeout: int = 300,
     ) -> str:
         """
         使用 LLM 进行 prompt 转换
@@ -437,7 +441,9 @@ class PromptConverter:
             prompt_parts.extend(result.actions)
             prompt_parts.append(result.atmosphere)
             
-            return ". ".join(filter(None, prompt_parts))
+            desc = ". ".join(filter(None, prompt_parts))
+            logger.info(f"LLM conversion result: {desc}")
+            return desc
             
         except Exception as e:
             logger.error(f"LLM conversion failed: {e}, falling back to rule-based")

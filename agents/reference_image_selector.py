@@ -279,7 +279,7 @@ class ReferenceImageSelector:
                 
                 if only_text_model:
                     return {
-                        "ref_image_indices": filtered_image_path_and_text_pairs,
+                        "reference_image_path_and_text_pairs": filtered_image_path_and_text_pairs,
                         "text_prompt": ref.text_prompt,
                     }
                 

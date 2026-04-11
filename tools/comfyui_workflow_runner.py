@@ -15,6 +15,7 @@ Usage:
 import asyncio
 import json
 import logging
+import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -94,7 +95,8 @@ class ComfyUIWorkflowRunner:
             ".bmp": "image/bmp",
         }
         content_type = content_type_map.get(ext, "application/octet-stream")
-        filename = Path(image_path).name
+        # 生成随机文件名
+        filename = f"{uuid.uuid4()}.{ext}"
         
         async with aiohttp.ClientSession() as session:
             with open(image_path, "rb") as f:
@@ -113,8 +115,9 @@ class ComfyUIWorkflowRunner:
 
     async def run(
         self,
-        workflow: dict,
+        workflow: dict[str, Any],
         output_node_ids: List[int | str],
+        timeout: int = 300
     ) -> dict[int | str, Any]:
         """
         执行工作流
@@ -122,6 +125,7 @@ class ComfyUIWorkflowRunner:
         Args:
             workflow: 工作流json
             output_node_ids: 输出节点 ID 列表
+            timeout: 超时时间
         
         Returns:
             执行结果字典，包含输出文件路径
@@ -134,18 +138,18 @@ class ComfyUIWorkflowRunner:
         self.output_node_ids = output_node_ids
         
         # 执行工作流
-        result = await self._execute_workflow(workflow)
+        result = await self._execute_workflow(workflow, timeout)
         
         return result
     
-    async def _execute_workflow(self, workflow: dict[str, Any]) -> dict[int | str, Any]:
+    async def _execute_workflow(self, workflow: dict[str, Any], timeout: int) -> dict[int | str, Any]:
         """执行工作流"""
 
         prompt_id = await self._queue_prompt(workflow)
         logger.info(f"Comfyui Queued prompt: {prompt_id}")
         
         # 等待执行完成
-        outputs = await self._wait_for_outputs(prompt_id)
+        outputs = await self._wait_for_outputs(prompt_id, timeout)
         
         return outputs
     
@@ -168,7 +172,7 @@ class ComfyUIWorkflowRunner:
                 result = await response.json()
                 return result["prompt_id"]
     
-    async def _wait_for_outputs(self, prompt_id: str) -> dict[int | str, Any]:
+    async def _wait_for_outputs(self, prompt_id: str, timeout: int) -> dict[int | str, Any]:
         """
         等待并获取输出
         
@@ -187,8 +191,11 @@ class ComfyUIWorkflowRunner:
         normalized_output_ids: set[int | str] = set()
         for oid in self.output_node_ids:
             normalized_output_ids.add(oid)
+            
+        start_time = None
         
         def ws_receiver():
+            nonlocal start_time
             try:
                 with ws_connect(ws_url) as ws:
                     while not result_holder["finished"]:
@@ -197,6 +204,9 @@ class ComfyUIWorkflowRunner:
                         # 处理二进制消息（跳过图片等二进制数据）
                         if isinstance(message, bytes):
                             continue
+                        
+                        if not start_time:
+                            start_time = time.time()
                         
                         data = json.loads(message)
                         msg_type = data.get("type")
@@ -249,11 +259,11 @@ class ComfyUIWorkflowRunner:
         ws_thread.start()
         
         # 等待完成（带超时）
-        timeout = 300  # 5 分钟超时
-        start_time = asyncio.get_event_loop().time()
+        timeout = timeout  # 5 分钟超时
+
         while not result_holder["finished"]:
             await asyncio.sleep(0.5)
-            if asyncio.get_event_loop().time() - start_time > timeout:
+            if start_time and time.time() - start_time > timeout:
                 result_holder["finished"] = True
                 result_holder["error"] = "Timeout waiting for workflow completion"
         
@@ -278,9 +288,9 @@ class ComfyUIWorkflowRunner:
             if "images" in output:
                 paths[node_id] = t.format(**output["images"][0])
             elif "gifs" in output:
-                paths[node_id] = output["gifs"]
+                paths[node_id] = t.format(**output["gifs"][0])
             elif "videos" in output:
-                paths[node_id] = output["videos"]
+                paths[node_id] = t.format(**output["videos"][0])
             elif "ui" in output:
                 # ComfyUI 的 UI 输出格式
                 ui_data = output["ui"]

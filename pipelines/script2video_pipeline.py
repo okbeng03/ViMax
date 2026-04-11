@@ -28,6 +28,7 @@ class Script2VideoPipeline:
         image_generator,
         video_generator,
         working_dir: str,
+        interrupt_step: str = None,
     ):
 
         self.chat_model = chat_model
@@ -39,14 +40,14 @@ class Script2VideoPipeline:
         self.storyboard_artist = StoryboardArtist(chat_model=self.chat_model)
         self.camera_image_generator = CameraImageGenerator(chat_model=self.chat_model, image_generator=self.image_generator, video_generator=self.video_generator)
         self.reference_image_selector = ReferenceImageSelector(chat_model=self.chat_model)
-        self.prompt_converter = PromptConverter(chat_model=self.chat_model, use_llm_conversion=True)
+        self.prompt_converter = PromptConverter(use_llm_conversion=True)
         
         # 检测是否是 LTX 模型（只有 LTX 需要对话融入场景）
         self.is_ltx_model = "ltx" in type(self.video_generator).__name__.lower()
 
         self.working_dir = working_dir
         os.makedirs(self.working_dir, exist_ok=True)
-
+        self.interrupt_step = interrupt_step
 
 
     @classmethod
@@ -64,6 +65,12 @@ class Script2VideoPipeline:
             video_generator=backend.video_generator,
             working_dir=config["working_dir"],
         )
+        
+    def check_interrupt(self, step_name: str):
+        """检查是否中断"""
+        
+        return True if self.interrupt_step ==  step_name else False
+
 
     async def __call__(
         self,
@@ -255,8 +262,12 @@ class Script2VideoPipeline:
                     )
                     with open(ff_selector_output_path, 'w', encoding='utf-8') as f:
                         json.dump(ff_selector_output, f, ensure_ascii=False, indent=4)
+                    # ff_selector_output = None
 
                     print(f"☑️ Selected reference images and generated prompt for first_frame of shot {first_shot_idx}, saved to {ff_selector_output_path}.")
+                
+                if not ff_selector_output:
+                    return
 
                 reference_image_path_and_text_pairs, prompt = ff_selector_output["reference_image_path_and_text_pairs"], ff_selector_output["text_prompt"]
                 prefix_prompt = ""
@@ -354,12 +365,21 @@ class Script2VideoPipeline:
             if self.is_ltx_model:
                 # LTX 模型：对话必须融入场景叙述中，而不是分开展示
                 # 将 motion_desc 和 audio_desc 融合，使对话出现在正确的动作位置
-                final_prompt = await self.prompt_converter.convert(
-                    audio_desc=shot_description.audio_desc,
-                    visual_desc=shot_description.visual_desc,
-                    motion_desc=shot_description.motion_desc,
-                    shot_duration=shot_description.shot_duration or 5.0,
-                )
+                final_prompt_path = os.path.join(self.working_dir, "shots", f"{shot_description.idx}", "ltx_prompt.txt")
+                if os.path.exists(final_prompt_path):
+                    print(f"🚀 Skipped generating LTX prompt for shot {shot_description.idx}, already exists.")
+                    final_prompt = open(final_prompt_path, 'r', encoding='utf-8').read()
+                else:
+                    final_prompt = await self.prompt_converter.convert(
+                        audio_desc=shot_description.audio_desc,
+                        visual_desc=shot_description.visual_desc,
+                        motion_desc=shot_description.motion_desc,
+                        shot_duration=shot_description.shot_duration or 5.0,
+                    )
+                    # 写入文件
+                    with open(final_prompt_path, 'w', encoding='utf-8') as f:
+                        f.write(final_prompt)
+                    
                 print(f"📝 LTX Prompt: {final_prompt[:100]}...")
             else:
                 # 非 LTX 模型：保持 motion_desc 和 audio_desc 分离的原始格式
@@ -593,11 +613,14 @@ class Script2VideoPipeline:
                 script=script,
                 characters=characters,
                 user_requirement=user_requirement,
-                retry_timeout=150,
+                retry_timeout=300,
             )
             with open(storyboard_path, 'w', encoding='utf-8') as f:
                 json.dump([shot.model_dump() for shot in storyboard], f, ensure_ascii=False, indent=4)
             print(f"✅ Designed storyboard and saved to {storyboard_path}.")
+            
+            if self.check_interrupt("storyboard"):
+                return
 
         for shot_brief_description in storyboard:
             self.shot_desc_events[shot_brief_description.idx] = asyncio.Event()

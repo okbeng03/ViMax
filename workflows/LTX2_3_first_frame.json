@@ -1,0 +1,650 @@
+{
+  "75": {
+    "inputs": {
+      "filename_prefix": "video/LTX_2.3_i2v",
+      "format": "auto",
+      "codec": "auto",
+      "video-preview": "",
+      "video": [
+        "304",
+        0
+      ]
+    },
+    "class_type": "SaveVideo",
+    "_meta": {
+      "title": "保存视频"
+    }
+  },
+  "269": {
+    "inputs": {
+      "image": "egyptian_queen.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "加载图像"
+    }
+  },
+  "270": {
+    "inputs": {
+      "noise_seed": 42
+    },
+    "class_type": "RandomNoise",
+    "_meta": {
+      "title": "随机噪波"
+    }
+  },
+  "271": {
+    "inputs": {
+      "noise_seed": 687947739887902
+    },
+    "class_type": "RandomNoise",
+    "_meta": {
+      "title": "随机噪波"
+    }
+  },
+  "272": {
+    "inputs": {
+      "video_latent": [
+        "282",
+        0
+      ],
+      "audio_latent": [
+        "301",
+        1
+      ]
+    },
+    "class_type": "LTXVConcatAVLatent",
+    "_meta": {
+      "title": "LTXVConcatAVLatent"
+    }
+  },
+  "273": {
+    "inputs": {
+      "ckpt_name": "ltx-2.3-22b-dev-fp8.safetensors"
+    },
+    "class_type": "LTXVAudioVAELoader",
+    "_meta": {
+      "title": "LTXV音频VAE加载器"
+    }
+  },
+  "274": {
+    "inputs": {
+      "sampler_name": "euler_cfg_pp"
+    },
+    "class_type": "KSamplerSelect",
+    "_meta": {
+      "title": "K采样器选择"
+    }
+  },
+  "275": {
+    "inputs": {
+      "sigmas": "0.85, 0.7250, 0.4219, 0.0"
+    },
+    "class_type": "ManualSigmas",
+    "_meta": {
+      "title": "自定义Sigmas"
+    }
+  },
+  "276": {
+    "inputs": {
+      "cfg": 1,
+      "model": [
+        "279",
+        0
+      ],
+      "positive": [
+        "278",
+        0
+      ],
+      "negative": [
+        "278",
+        1
+      ]
+    },
+    "class_type": "CFGGuider",
+    "_meta": {
+      "title": "CFG引导器"
+    }
+  },
+  "277": {
+    "inputs": {
+      "noise": [
+        "271",
+        0
+      ],
+      "guider": [
+        "308",
+        0
+      ],
+      "sampler": [
+        "285",
+        0
+      ],
+      "sigmas": [
+        "300",
+        0
+      ],
+      "latent_image": [
+        "312",
+        0
+      ]
+    },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {
+      "title": "自定义采样器（高级）"
+    }
+  },
+  "278": {
+    "inputs": {
+      "positive": [
+        "298",
+        0
+      ],
+      "negative": [
+        "298",
+        1
+      ],
+      "latent": [
+        "301",
+        0
+      ]
+    },
+    "class_type": "LTXVCropGuides",
+    "_meta": {
+      "title": "LTXV裁剪指导"
+    }
+  },
+  "279": {
+    "inputs": {
+      "lora_name": "ltx-2.3-22b-distilled-lora-384.safetensors",
+      "strength_model": 0.5,
+      "model": [
+        "310",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "LoRA加载器（仅模型）"
+    }
+  },
+  "281": {
+    "inputs": {
+      "samples": [
+        "301",
+        0
+      ],
+      "upscale_model": [
+        "305",
+        0
+      ],
+      "vae": [
+        "310",
+        2
+      ]
+    },
+    "class_type": "LTXVLatentUpsampler",
+    "_meta": {
+      "title": "LTXV潜空间上采样器"
+    }
+  },
+  "282": {
+    "inputs": {
+      "strength": 1,
+      "bypass": [
+        "296",
+        0
+      ],
+      "vae": [
+        "310",
+        2
+      ],
+      "image": [
+        "283",
+        0
+      ],
+      "latent": [
+        "281",
+        0
+      ]
+    },
+    "class_type": "LTXVImgToVideoInplace",
+    "_meta": {
+      "title": "LTXV图像转视频（原地）"
+    }
+  },
+  "283": {
+    "inputs": {
+      "img_compression": 18,
+      "image": [
+        "316",
+        0
+      ]
+    },
+    "class_type": "LTXVPreprocess",
+    "_meta": {
+      "title": "LTXV预处理"
+    }
+  },
+  "285": {
+    "inputs": {
+      "sampler_name": "euler_ancestral_cfg_pp"
+    },
+    "class_type": "KSamplerSelect",
+    "_meta": {
+      "title": "K采样器选择"
+    }
+  },
+  "286": {
+    "inputs": {
+      "expression": "a/2",
+      "values.a": [
+        "316",
+        3
+      ]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {
+      "title": "Math Expression"
+    }
+  },
+  "288": {
+    "inputs": {
+      "expression": "a/2",
+      "values.a": [
+        "316",
+        4
+      ]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {
+      "title": "Math Expression"
+    }
+  },
+  "289": {
+    "inputs": {
+      "width": [
+        "286",
+        1
+      ],
+      "height": [
+        "288",
+        1
+      ],
+      "length": [
+        "315",
+        0
+      ],
+      "batch_size": 1
+    },
+    "class_type": "EmptyLTXVLatentVideo",
+    "_meta": {
+      "title": "空Latent视频（LTXV）"
+    }
+  },
+  "290": {
+    "inputs": {
+      "strength": 0.7,
+      "bypass": [
+        "296",
+        0
+      ],
+      "vae": [
+        "310",
+        2
+      ],
+      "image": [
+        "283",
+        0
+      ],
+      "latent": [
+        "289",
+        0
+      ]
+    },
+    "class_type": "LTXVImgToVideoInplace",
+    "_meta": {
+      "title": "LTXV图像转视频（原地）"
+    }
+  },
+  "291": {
+    "inputs": {
+      "samples": [
+        "303",
+        1
+      ],
+      "audio_vae": [
+        "273",
+        0
+      ]
+    },
+    "class_type": "LTXVAudioVAEDecode",
+    "_meta": {
+      "title": "LTXV音频VAE解码"
+    }
+  },
+  "292": {
+    "inputs": {
+      "expression": "a",
+      "values.a": [
+        "294",
+        0
+      ]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {
+      "title": "Math Expression"
+    }
+  },
+  "294": {
+    "inputs": {
+      "value": 25
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "Frame Rate"
+    }
+  },
+  "296": {
+    "inputs": {
+      "value": false
+    },
+    "class_type": "PrimitiveBoolean",
+    "_meta": {
+      "title": "Switch to Text to Video?"
+    }
+  },
+  "297": {
+    "inputs": {
+      "text": [
+        "313",
+        0
+      ],
+      "clip": [
+        "311",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP文本编码"
+    }
+  },
+  "298": {
+    "inputs": {
+      "frame_rate": [
+        "292",
+        0
+      ],
+      "positive": [
+        "297",
+        0
+      ],
+      "negative": [
+        "307",
+        0
+      ]
+    },
+    "class_type": "LTXVConditioning",
+    "_meta": {
+      "title": "LTXV条件"
+    }
+  },
+  "299": {
+    "inputs": {
+      "frames_number": [
+        "315",
+        0
+      ],
+      "frame_rate": [
+        "292",
+        1
+      ],
+      "batch_size": 1,
+      "audio_vae": [
+        "273",
+        0
+      ]
+    },
+    "class_type": "LTXVEmptyLatentAudio",
+    "_meta": {
+      "title": "LTXV 空音频潜空间"
+    }
+  },
+  "300": {
+    "inputs": {
+      "sigmas": "1.0, 0.99375, 0.9875, 0.98125, 0.975, 0.909375, 0.725, 0.421875, 0.0"
+    },
+    "class_type": "ManualSigmas",
+    "_meta": {
+      "title": "自定义Sigmas"
+    }
+  },
+  "301": {
+    "inputs": {
+      "av_latent": [
+        "277",
+        0
+      ]
+    },
+    "class_type": "LTXVSeparateAVLatent",
+    "_meta": {
+      "title": "LTXV分离音视频潜空间"
+    }
+  },
+  "302": {
+    "inputs": {
+      "noise": [
+        "270",
+        0
+      ],
+      "guider": [
+        "276",
+        0
+      ],
+      "sampler": [
+        "274",
+        0
+      ],
+      "sigmas": [
+        "275",
+        0
+      ],
+      "latent_image": [
+        "272",
+        0
+      ]
+    },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {
+      "title": "自定义采样器（高级）"
+    }
+  },
+  "303": {
+    "inputs": {
+      "av_latent": [
+        "302",
+        0
+      ]
+    },
+    "class_type": "LTXVSeparateAVLatent",
+    "_meta": {
+      "title": "LTXV分离音视频潜空间"
+    }
+  },
+  "304": {
+    "inputs": {
+      "fps": [
+        "292",
+        0
+      ],
+      "images": [
+        "309",
+        0
+      ],
+      "audio": [
+        "291",
+        0
+      ]
+    },
+    "class_type": "CreateVideo",
+    "_meta": {
+      "title": "创建视频"
+    }
+  },
+  "305": {
+    "inputs": {
+      "model_name": "ltx-2.3-spatial-upscaler-x2-1.1.safetensors"
+    },
+    "class_type": "LatentUpscaleModelLoader",
+    "_meta": {
+      "title": "加载Latent放大模型"
+    }
+  },
+  "307": {
+    "inputs": {
+      "text": "pc game, console game, video game, cartoon, childish, ugly",
+      "clip": [
+        "311",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP文本编码"
+    }
+  },
+  "308": {
+    "inputs": {
+      "cfg": 1,
+      "model": [
+        "279",
+        0
+      ],
+      "positive": [
+        "298",
+        0
+      ],
+      "negative": [
+        "298",
+        1
+      ]
+    },
+    "class_type": "CFGGuider",
+    "_meta": {
+      "title": "CFG引导器"
+    }
+  },
+  "309": {
+    "inputs": {
+      "tile_size": 768,
+      "overlap": 64,
+      "temporal_size": 4096,
+      "temporal_overlap": 4,
+      "samples": [
+        "303",
+        0
+      ],
+      "vae": [
+        "310",
+        2
+      ]
+    },
+    "class_type": "VAEDecodeTiled",
+    "_meta": {
+      "title": "VAE解码（分块）"
+    }
+  },
+  "310": {
+    "inputs": {
+      "ckpt_name": "ltx-2.3-22b-dev-fp8.safetensors"
+    },
+    "class_type": "CheckpointLoaderSimple",
+    "_meta": {
+      "title": "Checkpoint加载器（简易）"
+    }
+  },
+  "311": {
+    "inputs": {
+      "text_encoder": "gemma_3_12B_it_fp4_mixed.safetensors",
+      "ckpt_name": "ltx-2.3-22b-dev-fp8.safetensors",
+      "device": "default"
+    },
+    "class_type": "LTXAVTextEncoderLoader",
+    "_meta": {
+      "title": "LTXV音频文本编码器加载器"
+    }
+  },
+  "312": {
+    "inputs": {
+      "video_latent": [
+        "290",
+        0
+      ],
+      "audio_latent": [
+        "299",
+        0
+      ]
+    },
+    "class_type": "LTXVConcatAVLatent",
+    "_meta": {
+      "title": "LTXVConcatAVLatent"
+    }
+  },
+  "313": {
+    "inputs": {
+      "value": "Egyptian royal in blue-and-gold headdress and high collar, white dress with golden embroidery and armbands, desert, robot soldiers in formation left and right. She walks steadily forward, head held level and gaze fixed ahead—no dipping or lowering of the head. The camera performs a single, smooth push-in only: starting in a wider shot of her, the robots, and the desert, it moves steadily forward until she is in a medium or medium-close frame, then holds. She stops, posture and head still upright, and says: “The old gods are silent. I am not.” Robot soldiers shift or march in place; sand and fabric move with the wind. No pull-back; the only camera move is the continuous push-in."
+    },
+    "class_type": "PrimitiveStringMultiline",
+    "_meta": {
+      "title": "Prompt"
+    }
+  },
+  "314": {
+    "inputs": {
+      "value": 5
+    },
+    "class_type": "easy int",
+    "_meta": {
+      "title": "duration"
+    }
+  },
+  "315": {
+    "inputs": {
+      "value": "a*b+1",
+      "a": [
+        "314",
+        0
+      ],
+      "b": [
+        "294",
+        0
+      ]
+    },
+    "class_type": "SimpleMath+",
+    "_meta": {
+      "title": "🔧 Simple Math"
+    }
+  },
+  "316": {
+    "inputs": {
+      "aspect_ratio": "16:9",
+      "proportional_width": 1,
+      "proportional_height": 1,
+      "fit": "crop",
+      "method": "lanczos",
+      "round_to_multiple": "32",
+      "scale_to_side": "longest",
+      "scale_to_length": 1080,
+      "background_color": "#000000",
+      "image": [
+        "269",
+        0
+      ]
+    },
+    "class_type": "LayerUtility: ImageScaleByAspectRatio V2",
+    "_meta": {
+      "title": "图层工具：按宽高比缩放 V2"
+    }
+  }
+}

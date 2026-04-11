@@ -83,13 +83,16 @@ class ImageGeneratorComfyUIFlux:
         
         return workflow
     
-    async def load_i2i_workflow(self, runner: ComfyUIWorkflowRunner, prompt: str, reference_image_paths: List[str] = None) -> dict[str, Any]:
+    async def load_i2i_workflow(self, runner: ComfyUIWorkflowRunner, prompt: str, reference_image_paths: List[str] = None, width: int = 2048, height: int = 2048) -> dict[str, Any]:
         """加载图生图工作流"""
 
         workflow = runner.load_workflow(image_to_image_workflow_path)
         workflow["94"]["inputs"]["filename_prefix"] = str(uuid.uuid4())
         workflow["92:113"]["inputs"]["text"] = prompt
+        workflow["92:197"]["inputs"]["value"] = height
+        workflow["92:199"]["inputs"]["value"] = width
         workflow["92:105"]["inputs"]["noise_seed"] = random.randint(1, 2**32 - 1)
+        
         
         # 删除对应节点
         reference_images_len = len(reference_image_paths)
@@ -164,14 +167,12 @@ class ImageGeneratorComfyUIFlux:
 
         return workflow
     
-    @retry(stop=stop_after_attempt(3), after=after_func, reraise=True)
     async def generate_single_image(
         self,
         prompt: str,
         *,
         reference_image_paths: List[str] = None,
-        width: int = 2048,
-        height: int = 2048,
+        size: Optional[str] = "2048x2048",
         **kwargs,
     ) -> ImageOutput:
         """
@@ -185,8 +186,7 @@ class ImageGeneratorComfyUIFlux:
         Returns:
             ImageOutput: 生成的图片输出
         """
-        logger.info(f"Generating image with Flux.klein... {prompt}")
-        
+        logger.info("Generating image with Flux.klein...")
         
         runner = ComfyUIWorkflowRunner(
             base_url=self.base_url,
@@ -194,9 +194,13 @@ class ImageGeneratorComfyUIFlux:
         )
         workflow = {}
         
+        # 从size解析width、height
+        if size:
+            width, height = map(int, size.split("x"))
+        
         if reference_image_paths:
             logger.info("==========Using reference images for style consistency================")
-            workflow = await self.load_i2i_workflow(runner=runner, prompt=prompt, reference_image_paths=reference_image_paths)
+            workflow = await self.load_i2i_workflow(runner=runner, prompt=prompt, reference_image_paths=reference_image_paths, width=width, height=height)
         else:
             workflow = await self.load_t2i_workflow(runner=runner, prompt=prompt, width=width, height=height)
         # print("========================\n", json.dumps(workflow, indent=4), "\n========================")

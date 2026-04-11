@@ -3,15 +3,6 @@ VideoGeneratorComfyUILTX: 使用 LTX Video 2.3 模型生成视频
 
 通过 ComfyUI 工作流调用本地部署的 LTX Video 2.3 模型
 
-支持的 ComfyUI 工作流格式:
-1. 新格式 (nodes 数组):
-   {
-       "id": "...",
-       "nodes": [{"id": 110, ...}, {"id": 111, ...}, ...]
-   }
-2. 旧格式 (直接节点):
-   {"110": {...}, "111": {...}, ...}
-
 LTX 2.3 特性：
 - 支持多帧输入（6+ 帧）用于角色/场景一致性
 - 英文提示词效果最佳
@@ -20,54 +11,50 @@ LTX 2.3 特性：
 Usage:
     # 方式1: 直接实例化
     generator = VideoGeneratorComfyUILTX(
-        base_url="http://127.0.0.1:8188",
-        workflow_json_path="workflows/ltx2_3.json",
-        input_node_descriptions=[
-            # 文本提示词
-            {"node_id": 110, "field": "prompt", "source": "prompt"},
-            # 多帧输入（支持 6+ 帧）
-            {"node_id": 111, "field": "image1", "source": "frame", "index": 0},
-            {"node_id": 112, "field": "image2", "source": "frame", "index": 1},
-            {"node_id": 113, "field": "image3", "source": "frame", "index": 2},
-            {"node_id": 114, "field": "image4", "source": "frame", "index": 3},
-            {"node_id": 115, "field": "image5", "source": "frame", "index": 4},
-            {"node_id": 116, "field": "image6", "source": "frame", "index": 5},
-        ]
+        base_url="http://127.0.0.1:8188"
     )
     
     # 多帧视频生成
     video = await generator.generate_single_video(
         prompt="A cinematic scene in a cafe. Alice smiles warmly, saying '你好'. Bob leans forward, curious.",
-        frame_paths=["/path/to/frame0.png", "/path/to/frame1.png", "/path/to/frame2.png"],
+        reference_image_paths=["/path/to/frame0.png", "/path/to/frame1.png", "/path/to/frame2.png"],
     )
     
     # 方式2: 从配置实例化
     generator = VideoGeneratorComfyUILTX.from_config(config)
 """
 
-import logging
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
 
-from tenacity import retry, stop_after_attempt
+import logging
+import uuid
+import random
+from typing import Any, List, Optional, Literal
 
 from interfaces.video_output import VideoOutput
 from tools.comfyui_workflow_runner import ComfyUIWorkflowRunner
-from utils.retry import after_func
 from utils.rate_limiter import RateLimiter
 
 
 logger = logging.getLogger(__name__)
 
+first_frame_workflow_path = "workflows/LTX2_3_first_frame.json"
+mutil_frame_workflow_path = "workflows/LTX2_3_mutil_frame.json"
+first_frame_output_node_ids = ["75"]
+mutil_frame_output_node_ids = ["649"]
+mutil_sigmas = {
+    1: "1.0, 0.99375, 0.9875, 0.98125, 0.975, 0.909375, 0.725, 0.421875, 0.0",
+    2: "1.0, 0.99375, 0.9875, 0.98125, 0.975, 0.909375, 0.82, 0.68, 0.52, 0.38, 0.18, 0.0",
+    3: "1.0, 0.99375, 0.9875, 0.98125, 0.975, 0.909375, 0.86, 0.82, 0.78, 0.72, 0.66, 0.58, 0.5, 0.42, 0.34, 0.24, 0.12, 0.0",
+    4: "1.0, 0.99375, 0.9875, 0.98125, 0.975, 0.909375,0.881203,0.863321,0.841251,0.820089,0.655, 0.381875, 0.0",
+}
 
 class VideoGeneratorComfyUILTX:
     """
     LTX Video 2.3 视频生成器
     
     基于 ComfyUI 工作流，支持：
-    - 文本到视频生成
-    - 多帧输入（6+ 帧）用于关键帧插值和角色一致性
-    - 关键帧时间点控制
+    - 首帧视频生成
+    - 多帧视频生成（最多4帧）用于关键帧插值和角色一致性
     
     重要提示：
     - LTX 2.3 对英文提示词效果最佳
@@ -78,9 +65,6 @@ class VideoGeneratorComfyUILTX:
     def __init__(
         self,
         base_url: str = "http://127.0.0.1:8188",
-        workflow_json_path: str = "workflows/ltx2_3.json",
-        input_node_descriptions: Optional[List[Dict[str, Any]]] = None,
-        max_frames: int = 6,
         rate_limiter: Optional[RateLimiter] = None,
     ):
         """
@@ -88,53 +72,133 @@ class VideoGeneratorComfyUILTX:
         
         Args:
             base_url: ComfyUI 服务地址
-            workflow_json_path: LTX 工作流 JSON 文件路径
-            input_node_descriptions: 输入节点描述列表
-            max_frames: 最大支持的帧数
             rate_limiter: 速率限制器
         """
-        # 默认的 LTX 工作流输入节点配置（使用整数节点 ID，支持 6 帧）
-        default_input_descriptions = input_node_descriptions or [
-            # 文本提示词
-            {"node_id": 110, "field": "prompt", "source": "prompt"},
-            # 多帧输入（支持 6+ 帧）
-            {"node_id": 111, "field": "image1", "source": "frame", "index": 0},
-            {"node_id": 112, "field": "image2", "source": "frame", "index": 1},
-            {"node_id": 113, "field": "image3", "source": "frame", "index": 2},
-            {"node_id": 114, "field": "image4", "source": "frame", "index": 3},
-            {"node_id": 115, "field": "image5", "source": "frame", "index": 4},
-            {"node_id": 116, "field": "image6", "source": "frame", "index": 5},
-        ]
-        
-        self.runner = ComfyUIWorkflowRunner(
-            base_url=base_url,
-            workflow_json_path=workflow_json_path,
-            input_node_descriptions=default_input_descriptions,
-            output_node_ids=[],  # 自动检测
-            rate_limiter=rate_limiter,
-        )
-        
-        self.max_frames = max_frames
-        logger.info(f"Initialized VideoGeneratorComfyUILTX with workflow: {workflow_json_path}, max_frames: {max_frames}")
+
+        self.base_url = base_url
+        self.rate_limiter = rate_limiter
     
     @classmethod
-    def from_config(cls, config: Dict[str, Any], rate_limiter: Optional[RateLimiter] = None) -> "VideoGeneratorComfyUILTX":
+    def from_config(cls, config: dict[str, Any], rate_limiter: Optional[RateLimiter] = None) -> "VideoGeneratorComfyUILTX":
         """从配置字典创建实例"""
         return cls(
             base_url=config.get("base_url", "http://127.0.0.1:8188"),
-            workflow_json_path=config.get("workflow_json_path", "workflows/ltx2_3.json"),
-            input_node_descriptions=config.get("input_node_descriptions"),
-            max_frames=config.get("max_frames", 6),
             rate_limiter=rate_limiter,
         )
+        
+    async def load_first_frame_workflow(
+        self, 
+        runner: ComfyUIWorkflowRunner,
+        prompt: str,
+        reference_image_paths: Optional[List[str]] = None,
+        resolution: Literal["480p", "720p", "1080p"] = "720p",
+        aspect_ratio: str = "16:9",
+        fps: Literal[16, 24] = 16,
+        duration: Literal[5, 10] = 5,
+    ) -> dict[str, Any]:
+        """
+        加载首帧工作流
+        """
+        
+        workflow = runner.load_workflow(first_frame_workflow_path)
+        workflow["75"]["inputs"]["filename_prefix"] = str(uuid.uuid4())
+        image_name = await runner.upload_image(reference_image_paths[0])
+        workflow["269"]["inputs"]["image"] = image_name
+        workflow["270"]["inputs"]["noise_seed"] = random.randint(1, 2**32 - 1)
+        workflow["271"]["inputs"]["noise_seed"] = random.randint(1, 2**32 - 1)
+        workflow["294"]["inputs"]["value"] = fps
+        workflow["313"]["inputs"]["value"] = prompt
+        workflow["314"]["inputs"]["value"] = duration
+        workflow["316"]["inputs"]["aspect_ratio"] = aspect_ratio
+        
+        return workflow
     
-    @retry(stop=stop_after_attempt(3), after=after_func, reraise=True)
+    async def load_mutil_frame_workflow(
+        self, 
+        runner: ComfyUIWorkflowRunner,
+        prompt: str,
+        reference_image_paths: Optional[List[str]] = None,
+        resolution: Literal["480p", "720p", "1080p"] = "720p",
+        aspect_ratio: str = "16:9",
+        fps: Literal[16, 24] = 16,
+        duration: Literal[5, 10] = 5,
+    ) -> dict[str, Any]:
+        """
+        加载多帧工作流
+        """
+        
+        workflow = runner.load_workflow(mutil_frame_workflow_path)
+        workflow["649"]["inputs"]["filename_prefix"] = str(uuid.uuid4())
+        workflow["636"]["inputs"]["noise_seed"] = random.randint(1, 2**32 - 1)
+        workflow["632"]["inputs"]["noise_seed"] = random.randint(1, 2**32 - 1)
+        workflow["625"]["inputs"]["value"] = fps
+        workflow["627"]["inputs"]["value"] = float(fps)
+        workflow["313"]["inputs"]["value"] = prompt
+        workflow["673"]["inputs"]["value"] = duration
+        workflow["700"]["inputs"]["aspect_ratio"] = aspect_ratio
+        
+        # 图片处理
+        first_frame = {
+            "image": "699",
+            "scale": "700",
+            "preprocess": "696",
+            "addguide": "611"
+        }
+        last_frame = {
+            "image": "686",
+            "scale": "685",
+            "preprocess": "684",
+            "addguide": "638"
+        }
+        middle_frames = [
+            {
+                "image": "694",
+                "scale": "693",
+                "preprocess": "692",
+                "addguide": "674",
+            },
+            {
+                "image": "690",
+                "scale": "689",
+                "preprocess": "688",
+                "addguide": "675",
+            },
+        ]
+        
+        reference_images_len = len(reference_image_paths)
+        workflow["633"]["inputs"]["sigmas"] = mutil_sigmas[reference_images_len]
+        all_frames = [first_frame] + middle_frames[:reference_images_len - 2] + [last_frame]
+        
+        for i, image_path in enumerate(reference_image_paths):
+            image_name = await runner.upload_image(image_path)
+            frame = all_frames[i]
+            workflow[frame["image"]]["inputs"]["image"] = image_name
+
+        for group in middle_frames[reference_images_len - 2:]:
+            for node_id in group.values():
+                workflow.pop(node_id, None)
+        
+        # 调整尾帧的 scale
+        last_frame_scale = workflow[last_frame["scale"]]
+        prev_frame_scale_node_id = all_frames[-2]["scale"]
+        workflow[last_frame_scale]["inputs"]["width"] = prev_frame_scale_node_id
+        workflow[last_frame_scale]["inputs"]["height"] = prev_frame_scale_node_id
+        last_frame_addguide = last_frame["addguide"]
+        prev_frame_addguide_node_id = all_frames[-2]["addguide"]
+        workflow[last_frame_addguide]["inputs"]["positive"] = [prev_frame_addguide_node_id, 0]
+        workflow[last_frame_addguide]["inputs"]["negative"] = [prev_frame_addguide_node_id, 1]
+        
+        return workflow
+    
+    
     async def generate_single_video(
         self,
         prompt: str,
         reference_image_paths: Optional[List[str]] = None,
-        frame_paths: Optional[List[str]] = None,
-        **kwargs,
+        resolution: Literal["480p", "720p", "1080p"] = "720p",
+        aspect_ratio: str = "16:9",
+        fps: Literal[16, 24] = 24,
+        duration: Literal[5, 10] = 5,
     ) -> VideoOutput:
         """
         生成单个视频
@@ -142,8 +206,10 @@ class VideoGeneratorComfyUILTX:
         Args:
             prompt: 视频描述文本（LTX 格式，英文+中文对话）
             reference_image_paths: 参考图片路径列表（兼容旧接口）
-            frame_paths: 关键帧路径列表（按时间顺序，0=首帧）
-            **kwargs: 其他参数
+            resolution: 视频分辨率
+            aspect_ratio: 视频宽高比
+            fps: 视频帧率
+            duration: 视频时长
         
         Returns:
             VideoOutput: 生成的视频输出
@@ -152,13 +218,13 @@ class VideoGeneratorComfyUILTX:
             # 单帧（首帧）
             video = await generator.generate_single_video(
                 prompt="A cinematic scene in a cafe.",
-                frame_paths=["/path/to/first_frame.png"]
+                reference_image_paths=["/path/to/first_frame.png"]
             )
             
             # 多帧（首尾帧 + 中间帧）
             video = await generator.generate_single_video(
                 prompt="A cinematic scene in a cafe. Alice says '你好'.",
-                frame_paths=[
+                reference_image_paths=[
                     "/path/to/frame_0s.png",   # 0s
                     "/path/to/frame_2s.png",   # 2s - Alice enters
                     "/path/to/frame_5s.png",   # 5s - last frame
@@ -167,25 +233,50 @@ class VideoGeneratorComfyUILTX:
         """
         logger.info("Generating video with LTX 2.3...")
         
-        # 兼容处理：reference_image_paths 可以作为 frame_paths 的别名
-        if frame_paths is None and reference_image_paths:
-            frame_paths = reference_image_paths
+        runner = ComfyUIWorkflowRunner(
+            base_url=self.base_url,
+            rate_limiter=self.rate_limiter,
+        )
+        workflow = {}
         
-        # 限制帧数
-        if frame_paths and len(frame_paths) > self.max_frames:
-            logger.warning(f"Frame count {len(frame_paths)} exceeds max {self.max_frames}, truncating")
-            frame_paths = frame_paths[:self.max_frames]
+        if len(reference_image_paths) > 4:
+            logger.warning("Too many reference images, only the first 4 will be used")
+            reference_image_paths = reference_image_paths[:4]
         
+        len_reference_image_paths = len(reference_image_paths)
+        
+        if len_reference_image_paths >= 2:
+            logger.info("============Using mutil frame workflow============")
+            workflow = await self.load_mutil_frame_workflow(
+                runner=runner,
+                prompt=prompt,
+                reference_image_paths=reference_image_paths,
+                resolution=resolution,
+                aspect_ratio=aspect_ratio,
+                fps=fps,
+                duration=duration,
+            )
+        else:
+            logger.info("============Using first frame workflow============")
+            workflow = await self.load_first_frame_workflow(
+                runner=runner,
+                prompt=prompt,
+                reference_image_paths=reference_image_paths,
+                resolution=resolution,
+                aspect_ratio=aspect_ratio,
+                fps=fps,
+                duration=duration,
+            )
+
         # 执行工作流
-        outputs = await self.runner.run(
-            prompt=prompt,
-            frames=frame_paths,
-            reference_image_paths=reference_image_paths,
-            **kwargs,
+        outputs = await runner.run(
+            workflow=workflow,
+            output_node_ids=mutil_frame_output_node_ids if len_reference_image_paths >= 2 else first_frame_output_node_ids,
+            timeout=60 * 10,  # 10 分钟超时
         )
         
         # 提取输出路径
-        output_paths = self.runner.get_output_paths(outputs)
+        output_paths = runner.get_output_paths(outputs)
         
         if not output_paths:
             raise RuntimeError("No video output generated")

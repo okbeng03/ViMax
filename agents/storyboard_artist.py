@@ -60,10 +60,20 @@ INVALID example (会导致角色被捏造):
   - Why? Because B enters at 4s but exits before 5s. This creates a "phantom character" B that appears then disappears mid-shot.
 - CORRECT: Cut at 4s → Shot 1 (0-4s): First frame [A], last frame [A, B] → VALID
            Shot 2 (4s onwards): First frame [A, C], last frame [A, C] → VALID
+           
+[Camera Reuse Rule - IMPORTANT]
+A camera can ONLY be reused if ALL of the following are consistent:
+- Camera angle (e.g., eye-level, low angle, high angle)
+- Subject orientation (e.g., front-facing, side-facing)
+- Shot composition (e.g., close-up, medium shot, wide shot)
+- Narrative function (e.g., action, reaction, dialogue)
+
+If ANY of these changes significantly, a NEW camera index MUST be assigned.
 
 [Guidelines]
 - Ensure all output values (except keys) match the language used in the script.
 - Each shot must have a clear narrative purpose—such as establishing the setting, showing character relationships, or highlighting reactions.
+- Shot Duration Requirement: Each shot MUST be exactly 5 seconds long. The dialogue content should fit naturally within this 5-second duration. If the dialogue is longer, consider breaking it into multiple shots or condensing the speech.
 - Use cinematic language deliberately: close-ups for emotion, wide shots for context, and varied angles to direct audience attention.
 - When designing a new shot, first consider whether it can be filmed using an existing camera position. Introduce a new one only if the shot size, angle, and focus differ significantly. If the camera undergoes significant movement, it cannot be used thereafter.
 - Keep character names in visual descriptions and speaker fields consistent with the character list. In visual descriptions, enclose names in angle brackets (e.g., <Alice>), but not in dialogue or speaker fields.
@@ -94,14 +104,15 @@ INVALID example (会导致角色被捏造):
 # -目标受众（如儿童、青少年、成人）。 
 # -故事板风格（例如，现实，卡通，抽象）。 
 # -期望的拍摄次数（例如，“不超过10次”）。 
-# -其他特定指示（例如，强调角色的行动）。 
- 
-# (输出) 
-# {format_instructions} 
- 
-# (指南) 
-# —确保所有输出值（除关键字外）与脚本使用的语言一致。 
-# -每个镜头必须有一个明确的叙事目的，如建立背景，显示人物关系，或突出反应。 
+# -其他特定指示（例如，强调角色的行动）。
+
+# (输出)
+# {format_instructions}
+
+# (指南)
+# —确保所有输出值（除关键字外）与脚本使用的语言一致。
+# -每个镜头必须有一个明确的叙事目的，如建立背景，显示人物关系，或突出反应。
+# -镜头时长要求：每个镜头必须是恰好 5 秒。对话内容应该自然地适应这个 5 秒时长。如果对话较长，考虑将其分成多个镜头或精简发言。
 # -刻意使用电影语言：特写镜头表达情感，广角镜头表达背景，以及不同的角度来吸引观众的注意力。 
 # 当设计一个新的镜头时，首先考虑它是否可以使用现有的相机位置拍摄。只有在镜头大小、角度和焦距明显不同的情况下，才引入新的镜头。如果相机发生了明显的移动，它就不能再使用了。 
 # 保持角色名称在视觉描述和说话字段与角色列表一致。在视觉描述中，将名称括在尖括号中（例如，<Alice>），但不要在dialogue或speaker字段中。 

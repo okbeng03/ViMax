@@ -247,6 +247,7 @@ class Idea2VideoPipeline:
                 image_generator=self.image_generator,
                 video_generator=self.video_generator,
                 working_dir=scene_working_dir,
+                interrupt_step=self.interrupt_step,
             )
             final_video_path = await script2video_pipeline(
                 script=scene_script,

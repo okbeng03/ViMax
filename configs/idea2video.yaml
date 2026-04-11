@@ -1,6 +1,6 @@
 chat_model:
   init_args:
-    model: qwen3.5-plus
+    model: qwen3.6-plus
     model_provider: qwen
     # model: doubao-1-5-pro-32k-250115
     # model_provider: openai
@@ -31,10 +31,18 @@ image_generator:
   max_requests_per_minute: null
   max_requests_per_day: null
 
+# video_generator:
+#   class_path: tools.VideoGeneratorDoubaoSeedanceYunwuAPI
+#   init_args:
+#     api_key: 02e2f340-c72d-4d6c-9aba-43b21b037315
+#   # Rate limits for video generation API calls
+#   # Set to null to disable rate limiting for this service
+#   max_requests_per_minute: null
+#   max_requests_per_day: null
 video_generator:
-  class_path: tools.VideoGeneratorDoubaoSeedanceYunwuAPI
+  class_path: tools.VideoGeneratorComfyUILTX
   init_args:
-    api_key: 02e2f340-c72d-4d6c-9aba-43b21b037315
+    base_url: http://192.168.3.4:8188
   # Rate limits for video generation API calls
   # Set to null to disable rate limiting for this service
   max_requests_per_minute: null
@@ -47,4 +55,5 @@ working_dir: /Users/wangchangbin/ai/vimax_output5
 # character 提取角色特征
 # portrait 生成角色肖像
 # script 生成剧本
-interrupt_step: script
+# storyboard 生成故事板
+interrupt_step: storyboard
