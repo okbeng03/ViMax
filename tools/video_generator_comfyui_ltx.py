@@ -133,7 +133,7 @@ class VideoGeneratorComfyUILTX:
         workflow["632"]["inputs"]["noise_seed"] = random.randint(1, 2**32 - 1)
         workflow["625"]["inputs"]["value"] = fps
         workflow["627"]["inputs"]["value"] = float(fps)
-        workflow["313"]["inputs"]["value"] = prompt
+        workflow["672"]["inputs"]["text"] = prompt
         workflow["673"]["inputs"]["value"] = duration
         workflow["700"]["inputs"]["aspect_ratio"] = aspect_ratio
         
@@ -177,9 +177,9 @@ class VideoGeneratorComfyUILTX:
         for group in middle_frames[reference_images_len - 2:]:
             for node_id in group.values():
                 workflow.pop(node_id, None)
-        
+
         # 调整尾帧的 scale
-        last_frame_scale = workflow[last_frame["scale"]]
+        last_frame_scale = last_frame["scale"]
         prev_frame_scale_node_id = all_frames[-2]["scale"]
         workflow[last_frame_scale]["inputs"]["width"] = prev_frame_scale_node_id
         workflow[last_frame_scale]["inputs"]["height"] = prev_frame_scale_node_id
@@ -187,7 +187,8 @@ class VideoGeneratorComfyUILTX:
         prev_frame_addguide_node_id = all_frames[-2]["addguide"]
         workflow[last_frame_addguide]["inputs"]["positive"] = [prev_frame_addguide_node_id, 0]
         workflow[last_frame_addguide]["inputs"]["negative"] = [prev_frame_addguide_node_id, 1]
-        
+        workflow[last_frame_addguide]["inputs"]["latent"] = [prev_frame_addguide_node_id, 2]
+
         return workflow
     
     
@@ -195,10 +196,11 @@ class VideoGeneratorComfyUILTX:
         self,
         prompt: str,
         reference_image_paths: Optional[List[str]] = None,
+        *,
         resolution: Literal["480p", "720p", "1080p"] = "720p",
         aspect_ratio: str = "16:9",
         fps: Literal[16, 24] = 24,
-        duration: Literal[5, 10] = 5,
+        duration: int = 5,
     ) -> VideoOutput:
         """
         生成单个视频
@@ -270,6 +272,7 @@ class VideoGeneratorComfyUILTX:
 
         # 执行工作流
         outputs = await runner.run(
+            workflow_path=mutil_frame_workflow_path if len_reference_image_paths >= 2 else first_frame_workflow_path,
             workflow=workflow,
             output_node_ids=mutil_frame_output_node_ids if len_reference_image_paths >= 2 else first_frame_output_node_ids,
             timeout=60 * 10,  # 10 分钟超时
@@ -322,7 +325,7 @@ class VideoGeneratorComfyUILTX:
             frame_paths_list = [None] * len(prompts)
         
         tasks = [
-            self.generate_single_video(prompt=prompt, frame_paths=frames, **kwargs)
+            self.generate_single_video(prompt=prompt, reference_image_paths=frames, **kwargs)
             for prompt, frames in zip(prompts, frame_paths_list)
         ]
         
