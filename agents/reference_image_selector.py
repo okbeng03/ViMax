@@ -54,6 +54,7 @@ You need to select up to 8 of the most relevant reference images based on the us
 - Choose reference image descriptions that are as concise as possible and avoid including duplicate information. For example, if Image 3 depicts the facial features of Bob from the front, and Image 1 also depicts Bob's facial features from the front-view portrait, then Image 1 is redundant and should not be selected.
 - When a new character appears in the frame description, prioritize selecting their portrait image description (if available) to ensure accurate depiction of their appearance. Pay attention to whether the character is facing the camera from the front, side, or back. Choose the most suitable view as the reference image for the character.
 - For character portraits, you can only select at most one image from multiple views (front, side, back). Choose the most appropriate one based on the frame description. For example, when depicting a character from the side, choose the side view of the character.
+- Note: The focus of the lens should be on the upper or lower body area. Do not abruptly present a truncated body, which is half of the meaning of the lens. Maintain a three-dimensional proportion. Avoid presenting a body that is cut off at the waist or legs.
 - Select at most **8** optimal reference image descriptions.
 """
 
@@ -275,7 +276,7 @@ class ReferenceImageSelector:
             try:
                 ref = await chain.ainvoke(messages)
                 filtered_image_path_and_text_pairs = [available_image_path_and_text_pairs[i] for i in ref.ref_image_indices]
-                logging.info(f"Filtered image idx:{ref.ref_image_indices}")
+                logging.info(f"Filtered image idx:{ref.ref_image_indices}:{filtered_image_path_and_text_pairs}")
                 
                 if only_text_model:
                     return {
