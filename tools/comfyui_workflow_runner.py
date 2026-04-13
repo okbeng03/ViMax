@@ -26,6 +26,7 @@ from utils.rate_limiter import RateLimiter
 
 logger = logging.getLogger(__name__)
 
+
 @dataclass
 class ComfyUIWorkflowConfig:
     """ComfyUI 工作流配置"""
@@ -34,14 +35,54 @@ class ComfyUIWorkflowConfig:
     client_id: str | None = None
 
 
+@dataclass
+class WorkflowTask:
+    """工作流任务"""
+    workflow_path: str
+    workflow: dict[str, Any]
+    output_node_ids: list[int | str]
+    timeout: int
+    future: asyncio.Future[Any] | None = None
+    
+    def __post_init__(self):
+        if self.future is None:
+            loop = asyncio.get_running_loop()
+            self.future = loop.create_future()
+
+
+# ============ 全局队列（所有实例共享） ============
+_global_task_queue: asyncio.Queue[WorkflowTask] | None = None
+_global_worker_task: asyncio.Task[None] | None = None
+_global_is_running = False
+_global_queue_lock: asyncio.Lock | None = None
+
+
+def _get_global_queue() -> asyncio.Queue[WorkflowTask]:
+    """获取或创建全局队列"""
+    global _global_task_queue
+    if _global_task_queue is None:
+        _global_task_queue = asyncio.Queue()
+    return _global_task_queue
+
+
+def _get_global_lock() -> asyncio.Lock:
+    """获取或创建全局锁"""
+    global _global_queue_lock
+    if _global_queue_lock is None:
+        _global_queue_lock = asyncio.Lock()
+    return _global_queue_lock
+
+
 class ComfyUIWorkflowRunner:
     """
     ComfyUI 工作流通用执行器
     
     核心能力：
-    1. run 提交到队列
+    1. run 提交到全局队列，顺序执行（避免 GPU 并发冲突）
     2. 通过 WebSocket 获取执行进度和结果
     3. 上传图片
+    
+    注意：队列是全局的，所有实例共享同一个队列
     """
     
     # 常见的输出节点类型
@@ -96,7 +137,7 @@ class ComfyUIWorkflowRunner:
         }
         content_type = content_type_map.get(ext, "application/octet-stream")
         # 生成随机文件名
-        filename = f"{uuid.uuid4()}.{ext}"
+        filename = f"{uuid.uuid4()}{ext}"
         
         async with aiohttp.ClientSession() as session:
             with open(image_path, "rb") as f:
@@ -115,12 +156,13 @@ class ComfyUIWorkflowRunner:
 
     async def run(
         self,
+        workflow_path: str,
         workflow: dict[str, Any],
         output_node_ids: List[int | str],
         timeout: int = 300
     ) -> dict[int | str, Any]:
         """
-        执行工作流
+        执行工作流（加入全局队列，顺序执行）
         
         Args:
             workflow: 工作流json
@@ -131,16 +173,97 @@ class ComfyUIWorkflowRunner:
             执行结果字典，包含输出文件路径
         """
         
-        # 应用速率限制
-        if self.rate_limiter:
-            await self.rate_limiter.acquire()
-            
-        self.output_node_ids = output_node_ids
+        global _global_worker_task, _global_is_running
         
-        # 执行工作流
-        result = await self._execute_workflow(workflow, timeout)
+        # 启动队列处理器（如果尚未启动）
+        async with _get_global_lock():
+            if _global_worker_task is None or _global_worker_task.done():
+                _global_is_running = True
+                _global_worker_task = asyncio.create_task(self._global_queue_worker())
+        
+        # 创建任务并加入全局队列
+        task = WorkflowTask(
+            workflow_path=workflow_path,
+            workflow=workflow,
+            output_node_ids=output_node_ids,
+            timeout=timeout,
+        )
+        
+        queue = _get_global_queue()
+        await queue.put(task)
+        logger.info(f"工作流已加入全局队列，当前队列长度: {queue.qsize()}")
+        
+        # 等待任务执行完成（future 已在 __post_init__ 中初始化）
+        assert task.future is not None, "Future should be initialized in __post_init__"
+        result = await task.future
         
         return result
+    
+    async def _global_queue_worker(self):
+        """全局队列工作器：顺序处理队列中的任务"""
+        global _global_is_running
+        
+        logger.info("全局队列工作器已启动")
+        
+        while _global_is_running:
+            try:
+                # 等待下一个任务
+                queue = _get_global_queue()
+                task = await asyncio.wait_for(queue.get(), timeout=1.0)
+                
+                logger.info(f"开始执行工作流{task.workflow_path}...")
+                
+                # 应用速率限制
+                if self.rate_limiter:
+                    await self.rate_limiter.acquire()
+                
+                # 更新输出节点 ID
+                self.output_node_ids = task.output_node_ids
+                
+                # 执行工作流
+                try:
+                    result = await self._execute_workflow(task.workflow, task.timeout)
+                    assert task.future is not None
+                    task.future.set_result(result)
+                except Exception as e:
+                    assert task.future is not None
+                    task.future.set_exception(e)
+                    logger.error(f"工作流执行失败: {e}")
+                
+                # 标记任务完成
+                queue.task_done()
+                logger.info("工作流执行完成")
+                
+            except asyncio.TimeoutError:
+                # 没有新任务，继续循环检查是否应该退出
+                continue
+            except asyncio.CancelledError:
+                logger.info("全局队列工作器被取消")
+                break
+            except Exception as e:
+                logger.error(f"队列处理异常: {e}")
+        
+        logger.info("全局队列工作器已停止")
+    
+    @staticmethod
+    def stop_worker():
+        """停止全局队列工作器"""
+        global _global_is_running, _global_worker_task
+        _global_is_running = False
+        if _global_worker_task and not _global_worker_task.done():
+            _global_worker_task.cancel()
+    
+    @staticmethod
+    async def wait_queue_empty():
+        """等待全局队列中的所有任务执行完成"""
+        queue = _get_global_queue()
+        await queue.join()
+    
+    @staticmethod
+    def get_queue_size() -> int:
+        """获取当前全局队列长度"""
+        queue = _get_global_queue()
+        return queue.qsize()
     
     async def _execute_workflow(self, workflow: dict[str, Any], timeout: int) -> dict[int | str, Any]:
         """执行工作流"""
