@@ -109,7 +109,7 @@ You will receive:
 {format_instructions}
 
 [Guidelines]
-- Output language: Scene descriptions in English, dialogue content should remain in its original language (Chinese)
+- Output language: Scene descriptions and dialogue content should remain in its original language (Chinese)
 - Keep the output concise but descriptive
 - Focus on visualizable actions and expressions
 - Ensure logical flow between sentences
@@ -164,10 +164,6 @@ human_prompt_template_convert_dialogue = \
 <ORIGINAL_AUDIO_DESC>
 {audio_desc}
 </ORIGINAL_AUDIO_DESC>
-
-<ORIGINAL_VISUAL_DESC>
-{visual_desc}
-</ORIGINAL_VISUAL_DESC>
 
 <ORIGINAL_MOTION_DESC>
 {motion_desc}
@@ -310,7 +306,7 @@ class PromptConverter:
     def rule_based_convert(
         self,
         audio_desc: str,
-        visual_desc: str,
+        # visual_desc: str,
         shot_duration: float = 5.0,
     ) -> str:
         """
@@ -333,9 +329,9 @@ class PromptConverter:
         parts = []
         
         # 1. 基础场景设置（从 visual_desc 提取）
-        scene_setting = self._extract_scene_setting(visual_desc)
-        if scene_setting:
-            parts.append(scene_setting)
+        # scene_setting = self._extract_scene_setting(visual_desc)
+        # if scene_setting:
+        #     parts.append(scene_setting)
         
         # 2. 添加音效作为氛围
         if parsed.sound_effects:
@@ -388,7 +384,7 @@ class PromptConverter:
     async def llm_convert(
         self,
         audio_desc: str,
-        visual_desc: str,
+        # visual_desc: str,
         motion_desc: str = "",
         shot_duration: float = 5.0,
         retry_timeout: int = 300,
@@ -401,7 +397,7 @@ class PromptConverter:
         
         Args:
             audio_desc: 音频描述（对话）
-            visual_desc: 视觉描述（场景设定）
+            # visual_desc: 视觉描述（场景设定）
             motion_desc: 动作描述（镜头运动和角色动作）
             shot_duration: 镜头时长（秒）
             retry_timeout: 超时时间
@@ -411,7 +407,7 @@ class PromptConverter:
         """
         if not self.chat_model:
             logger.warning("No chat model provided, falling back to rule-based conversion")
-            return self.rule_based_convert(audio_desc, visual_desc, shot_duration)
+            return self.rule_based_convert(audio_desc, shot_duration)
         
         parser = PydanticOutputParser(pydantic_object=LTXPromptFormat)
         
@@ -421,7 +417,7 @@ class PromptConverter:
             )),
             HumanMessage(content=human_prompt_template_convert_dialogue.format(
                 audio_desc=audio_desc or "(No audio)",
-                visual_desc=visual_desc or "(No visual description)",
+                # visual_desc=visual_desc or "(No visual description)",
                 shot_duration=shot_duration,
                 motion_desc=motion_desc or "(No motion description)",
             )),
@@ -447,12 +443,12 @@ class PromptConverter:
             
         except Exception as e:
             logger.error(f"LLM conversion failed: {e}, falling back to rule-based")
-            return self.rule_based_convert(audio_desc, visual_desc, shot_duration)
+            return self.rule_based_convert(audio_desc, shot_duration)
     
     async def convert(
         self,
         audio_desc: str,
-        visual_desc: str,
+        # visual_desc: str,
         motion_desc: str = "",
         shot_duration: float = 5.0,
     ) -> str:
@@ -467,7 +463,7 @@ class PromptConverter:
         
         Args:
             audio_desc: 音频描述（对话）
-            visual_desc: 视觉描述（场景设定）
+            # visual_desc: 视觉描述（场景设定）
             motion_desc: 动作描述（镜头运动和角色动作）
             shot_duration: 镜头时长（秒）
         
@@ -486,9 +482,9 @@ class PromptConverter:
         )
         
         if needs_llm and self.chat_model:
-            return await self.llm_convert(audio_desc, visual_desc, motion_desc, shot_duration)
+            return await self.llm_convert(audio_desc, motion_desc, shot_duration)
         else:
-            return self.rule_based_convert(audio_desc, visual_desc, shot_duration)
+            return self.rule_based_convert(audio_desc, shot_duration)
 
 
 # 便捷函数
