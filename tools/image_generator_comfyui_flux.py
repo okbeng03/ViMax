@@ -206,6 +206,7 @@ class ImageGeneratorComfyUIFlux:
         # print("========================\n", json.dumps(workflow, indent=4), "\n========================")
         # 执行工作流
         outputs = await runner.run(
+            workflow_path=image_to_image_workflow_path if reference_image_paths else text_to_image_workflow_path,
             workflow=workflow,
             output_node_ids=image_to_image_output_node_ids if reference_image_paths else text_to_image_output_node_ids,
         )

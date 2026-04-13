@@ -372,7 +372,7 @@ class Script2VideoPipeline:
                 else:
                     final_prompt = await self.prompt_converter.convert(
                         audio_desc=shot_description.audio_desc,
-                        visual_desc=shot_description.visual_desc,
+                        # visual_desc=shot_description.visual_desc,
                         motion_desc=shot_description.motion_desc,
                         shot_duration=shot_description.shot_duration or 5.0,
                     )
@@ -389,6 +389,7 @@ class Script2VideoPipeline:
             video_output = await self.video_generator.generate_single_video(
                 prompt=final_prompt,
                 reference_image_paths=frame_paths,
+                duration=int(shot_description.shot_duration or 5.0),
             )
             video_output.save(video_path)
             print(f"☑️ Generated video for shot {shot_description.idx}, saved to {video_path}.")
