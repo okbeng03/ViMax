@@ -109,7 +109,7 @@ You will receive:
 {format_instructions}
 
 [Guidelines]
-- Output language: Scene descriptions and dialogue content should remain in its original language (Chinese)
+- Ensure all output values (except keys) match the language used in its original (Chinese).
 - Keep the output concise but descriptive
 - Focus on visualizable actions and expressions
 - Ensure logical flow between sentences

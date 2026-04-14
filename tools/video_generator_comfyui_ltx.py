@@ -47,6 +47,7 @@ mutil_sigmas = {
     3: "1.0, 0.99375, 0.9875, 0.98125, 0.975, 0.909375, 0.86, 0.82, 0.78, 0.72, 0.66, 0.58, 0.5, 0.42, 0.34, 0.24, 0.12, 0.0",
     4: "1.0, 0.99375, 0.9875, 0.98125, 0.975, 0.909375,0.881203,0.863321,0.841251,0.820089,0.655, 0.381875, 0.0",
 }
+max_noise = 2**50 - 1
 
 class VideoGeneratorComfyUILTX:
     """
@@ -104,8 +105,8 @@ class VideoGeneratorComfyUILTX:
         workflow["75"]["inputs"]["filename_prefix"] = str(uuid.uuid4())
         image_name = await runner.upload_image(reference_image_paths[0])
         workflow["269"]["inputs"]["image"] = image_name
-        workflow["270"]["inputs"]["noise_seed"] = random.randint(1, 2**32 - 1)
-        workflow["271"]["inputs"]["noise_seed"] = random.randint(1, 2**32 - 1)
+        workflow["270"]["inputs"]["noise_seed"] = random.randint(1, max_noise)
+        workflow["271"]["inputs"]["noise_seed"] = random.randint(1, max_noise)
         workflow["294"]["inputs"]["value"] = fps
         workflow["313"]["inputs"]["value"] = prompt
         workflow["314"]["inputs"]["value"] = duration
@@ -129,8 +130,8 @@ class VideoGeneratorComfyUILTX:
         
         workflow = runner.load_workflow(mutil_frame_workflow_path)
         workflow["649"]["inputs"]["filename_prefix"] = str(uuid.uuid4())
-        workflow["636"]["inputs"]["noise_seed"] = random.randint(1, 2**32 - 1)
-        workflow["632"]["inputs"]["noise_seed"] = random.randint(1, 2**32 - 1)
+        workflow["636"]["inputs"]["noise_seed"] = random.randint(1, max_noise)
+        workflow["632"]["inputs"]["noise_seed"] = random.randint(1, max_noise)
         workflow["625"]["inputs"]["value"] = fps
         workflow["627"]["inputs"]["value"] = float(fps)
         workflow["672"]["inputs"]["text"] = prompt

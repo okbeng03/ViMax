@@ -36,6 +36,7 @@ text_to_image_workflow_path = "workflows/flux2_klein_text_to_image.json"
 image_to_image_workflow_path = "workflows/flux2_klein_8image.json"
 text_to_image_output_node_ids = ["9"]
 image_to_image_output_node_ids = ["94"]
+max_noise = 2**50 - 1
 
 class ImageGeneratorComfyUIFlux:
     """
@@ -79,7 +80,7 @@ class ImageGeneratorComfyUIFlux:
         workflow["76"]["inputs"]["value"] = prompt
         workflow["75:68"]["inputs"]["value"] = width
         workflow["75:69"]["inputs"]["value"] = height
-        workflow["75:73"]["inputs"]["noise_seed"] = random.randint(1, 2**32 - 1)
+        workflow["75:73"]["inputs"]["noise_seed"] = random.randint(1, max_noise)
         
         return workflow
     
@@ -91,7 +92,7 @@ class ImageGeneratorComfyUIFlux:
         workflow["92:113"]["inputs"]["text"] = prompt
         workflow["92:197"]["inputs"]["value"] = height
         workflow["92:199"]["inputs"]["value"] = width
-        workflow["92:105"]["inputs"]["noise_seed"] = random.randint(1, 2**32 - 1)
+        workflow["92:105"]["inputs"]["noise_seed"] = random.randint(1, max_noise)
         
         
         # 删除对应节点
