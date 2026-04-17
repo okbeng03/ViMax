@@ -153,7 +153,7 @@
   "610": {
     "inputs": {
       "lora_name": "ltx-2.3-22b-distilled-lora-384.safetensors",
-      "strength_model": 0.5000000000000001,
+      "strength_model": 0.5,
       "model": [
         "609",
         0
@@ -490,7 +490,7 @@
       "temporal_size": 768,
       "temporal_overlap": 16,
       "samples": [
-        "654",
+        "676",
         2
       ],
       "vae": [
@@ -540,7 +540,7 @@
         0
       ],
       "audio": [
-        "658",
+        "648",
         0
       ]
     },
@@ -1001,7 +1001,7 @@
       "method": "lanczos",
       "round_to_multiple": "32",
       "scale_to_side": "longest",
-      "scale_to_length": 1080,
+      "scale_to_length": 1344,
       "background_color": "#000000",
       "image": [
         "699",
