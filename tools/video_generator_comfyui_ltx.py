@@ -105,8 +105,9 @@ class VideoGeneratorComfyUILTX:
         workflow["75"]["inputs"]["filename_prefix"] = str(uuid.uuid4())
         image_name = await runner.upload_image(reference_image_paths[0])
         workflow["269"]["inputs"]["image"] = image_name
-        workflow["270"]["inputs"]["noise_seed"] = random.randint(1, max_noise)
-        workflow["271"]["inputs"]["noise_seed"] = random.randint(1, max_noise)
+        noise_seed = random.randint(1, max_noise)
+        workflow["270"]["inputs"]["noise_seed"] = noise_seed
+        workflow["271"]["inputs"]["noise_seed"] = noise_seed
         workflow["294"]["inputs"]["value"] = fps
         workflow["313"]["inputs"]["value"] = prompt
         workflow["314"]["inputs"]["value"] = duration
@@ -130,8 +131,9 @@ class VideoGeneratorComfyUILTX:
         
         workflow = runner.load_workflow(mutil_frame_workflow_path)
         workflow["649"]["inputs"]["filename_prefix"] = str(uuid.uuid4())
-        workflow["636"]["inputs"]["noise_seed"] = random.randint(1, max_noise)
-        workflow["632"]["inputs"]["noise_seed"] = random.randint(1, max_noise)
+        noise_seed = random.randint(1, max_noise)
+        workflow["636"]["inputs"]["noise_seed"] = noise_seed
+        workflow["632"]["inputs"]["noise_seed"] = noise_seed
         workflow["625"]["inputs"]["value"] = fps
         workflow["627"]["inputs"]["value"] = float(fps)
         workflow["672"]["inputs"]["text"] = prompt
@@ -182,8 +184,8 @@ class VideoGeneratorComfyUILTX:
         # 调整尾帧的 scale
         last_frame_scale = last_frame["scale"]
         prev_frame_scale_node_id = all_frames[-2]["scale"]
-        workflow[last_frame_scale]["inputs"]["width"] = prev_frame_scale_node_id
-        workflow[last_frame_scale]["inputs"]["height"] = prev_frame_scale_node_id
+        workflow[last_frame_scale]["inputs"]["width"] = [prev_frame_scale_node_id, 3]
+        workflow[last_frame_scale]["inputs"]["height"] = [prev_frame_scale_node_id, 3]
         last_frame_addguide = last_frame["addguide"]
         prev_frame_addguide_node_id = all_frames[-2]["addguide"]
         workflow[last_frame_addguide]["inputs"]["positive"] = [prev_frame_addguide_node_id, 0]
