@@ -17,6 +17,7 @@ import json
 import logging
 import time
 import uuid
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, List
@@ -270,6 +271,11 @@ class ComfyUIWorkflowRunner:
 
         prompt_id = await self._queue_prompt(workflow)
         logger.info(f"Comfyui Queued prompt: {prompt_id}")
+        # TODO:: 配置化
+        workflow_path = os.path.join("/Users/wangchangbin/ai/vimax_output5", f"{prompt_id}.json")
+        
+        with open(workflow_path, 'w', encoding='utf-8') as f:
+            f.write(json.dumps(workflow, ensure_ascii=False, indent=4))
         
         # 等待执行完成
         outputs = await self._wait_for_outputs(prompt_id, timeout)
