@@ -123,6 +123,9 @@ class Script2VideoPipeline:
             characters=characters,
             user_requirement=user_requirement,
         )
+        
+        if self.check_interrupt("storyboard"):
+            return
 
         # 分解镜头，生成首尾帧和过渡动作帧
         # decompose visual descriptions of shots
@@ -130,12 +133,18 @@ class Script2VideoPipeline:
             shot_brief_descriptions=storyboard,
             characters=characters,
         )
+        
+        if self.check_interrupt("shot_description"):
+            return
 
         # 构建相机树，父子级关系
         # construct camera tree
         camera_tree = await self.construct_camera_tree(
             shot_descriptions=shot_descriptions,
         )
+        
+        if self.check_interrupt("camera_tree"):
+            return
 
         # 优先拍摄父相机？
         # 基于机位生成对应镜头的首尾帧
@@ -147,9 +156,14 @@ class Script2VideoPipeline:
                 characters=characters,
                 character_portraits_registry=character_portraits_registry,
                 priority_shot_idxs=priority_shot_idxs,
+                style=style,
             )
             for camera in camera_tree
         ]
+        await asyncio.gather(*tasks)
+        
+        if self.check_interrupt("camera_frame"):
+            return
 
         # 基于首尾帧生成镜头视频
         video_tasks = [
@@ -158,9 +172,8 @@ class Script2VideoPipeline:
             )
             for shot_description in shot_descriptions
         ]
-        tasks.extend(video_tasks)
-        await asyncio.gather(*tasks)
-
+        await asyncio.gather(*video_tasks)
+        
         # 合并场景视频
         final_video_path = os.path.join(self.working_dir, "final_video.mp4")
         if os.path.exists(final_video_path):
@@ -185,6 +198,7 @@ class Script2VideoPipeline:
         characters: List[CharacterInScene],
         character_portraits_registry: Dict[str, Dict[str, Dict[str, str]]],
         priority_shot_idxs: List[int],
+        style: str,
     ):
         # 1. generate the first_frame of the first shot of the camera
         first_shot_idx = camera.active_shot_idxs[0]
@@ -225,7 +239,7 @@ class Script2VideoPipeline:
                     transition_video_output.save(transition_video_path)
                     print(f"☑️ Generated transition video for shot {first_shot_idx} from shot {parent_shot_idx}, saved to {transition_video_path}.")
 
-                # 从视频中截取末尾帧作为下一个过渡？
+                # 从视频中截取场景切换帧作为参考，这样能提高一致性
                 new_camera_image_path = os.path.join(self.working_dir, "shots", f"{first_shot_idx}", f"new_camera_{camera.idx}.png")
                 if os.path.exists(new_camera_image_path):
                     print(f"🚀 Skipped generating new camera image for shot {first_shot_idx}, already exists.")
@@ -234,16 +248,18 @@ class Script2VideoPipeline:
                     new_camera_image = self.camera_image_generator.get_new_camera_image(transition_video_path)
                     new_camera_image.save(new_camera_image_path)
                     print(f"☑️ Generated new camera image for shot {first_shot_idx} (not completed), saved to {new_camera_image_path}.")
-
+                    
+                if new_camera_image_path:
                     available_image_path_and_text_pairs.append(
                         (
                             new_camera_image_path,
-                            f"The composition and background are correct but some elements may be wrong. The wrong elements should be replaced.\nWrong elements: {camera.missing_info}.\nYou must select this image as the main reference and replace the characters in the image with the provided character portraits. Don't change the background."
+                            f"The composition and background are correct but some elements may be wrong. The wrong elements should be replaced.Wrong elements: {camera.missing_info}.You must select this image as the main reference and replace the characters in the image with the provided character portraits. Don't change the background."
+                            # 构图和背景是正确的，但有些元素可能是错误的。错误的元素应该被替换。{camera.missing_info}。您必须选择此图像作为主要参考，并将图像中的字符替换为提供的字符肖像。不要改变背景。
                         )
                     )
 
 
-            # 如果子镜头缺少信息，则需要选择参考图像生成
+            # 如果有父镜头，并且父镜头完全覆盖了子镜头；则直接使用切换场景作为首帧图；否则生成首帧图
             if camera.parent_shot_idx is None or camera.missing_info is not None:
                 ff_selector_output_path = os.path.join(self.working_dir, "shots", f"{first_shot_idx}", "first_frame_selector_output.json")
                 if os.path.exists(ff_selector_output_path):
@@ -270,12 +286,12 @@ class Script2VideoPipeline:
                     return
 
                 reference_image_path_and_text_pairs, prompt = ff_selector_output["reference_image_path_and_text_pairs"], ff_selector_output["text_prompt"]
-                prefix_prompt = ""
-                for i, (image_path, text) in enumerate(reference_image_path_and_text_pairs):
-                    prefix_prompt += f"Image {i}: {text}\n"
+                prefix_prompt = f"style: {style}\n"
+                # for i, (image_path, text) in enumerate(reference_image_path_and_text_pairs):
+                #     prefix_prompt += f"Image {i}: {text}\n"
                 prompt = f"{prefix_prompt}\n{prompt}"
                 reference_image_paths = [item[0] for item in reference_image_path_and_text_pairs]
-                
+
                 # 基于参考图片 + 描述生成图片
                 ff_image: ImageOutput = await self.image_generator.generate_single_image(
                     prompt=prompt,
@@ -288,7 +304,7 @@ class Script2VideoPipeline:
             else:
                 shutil.copy(new_camera_image_path, first_shot_ff_path)
                 self.frame_events[first_shot_idx]["first_frame"].set()
-                print(f"☑️ Generated first_frame for shot {first_shot_idx}, saved to {first_shot_ff_path}.")
+                print(f"☑️ Generated first_frame for shot {first_shot_idx}, saved to {first_shot_ff_path}. Parent shot fully covers the child shot, direct use.")
 
 
         # 2. generate the following frames of the camera
@@ -304,10 +320,11 @@ class Script2VideoPipeline:
                 frame_desc=shot_descriptions[first_shot_idx].lf_desc,
                 visible_characters=[characters[idx] for idx in shot_descriptions[first_shot_idx].lf_vis_char_idxs],
                 character_portraits_registry=character_portraits_registry,
+                style=style,
             )
             normal_tasks.append(task)
 
-        # 生成后续镜头
+        # 生成后续镜头。同一个机位的后续图片参考第一个镜头图片
         for shot_idx in camera.active_shot_idxs[1:]:
             # 基于首镜头生成后续镜头首帧
             first_frame_task = self.generate_frame_for_single_shot(
@@ -317,6 +334,7 @@ class Script2VideoPipeline:
                     frame_desc=shot_descriptions[shot_idx].ff_desc,
                     visible_characters=[characters[idx] for idx in shot_descriptions[shot_idx].ff_vis_char_idxs],
                     character_portraits_registry=character_portraits_registry,
+                    style=style,
                 )
             if shot_idx in priority_shot_idxs:
                 priority_tasks.append(first_frame_task)
@@ -333,6 +351,7 @@ class Script2VideoPipeline:
                     frame_desc=shot_descriptions[shot_idx].lf_desc,
                     visible_characters=[characters[idx] for idx in shot_descriptions[shot_idx].lf_vis_char_idxs],
                     character_portraits_registry=character_portraits_registry,
+                    style=style,
                 )
                 normal_tasks.append(last_frame_task)
 
@@ -387,7 +406,7 @@ class Script2VideoPipeline:
             
             # 基于运镜生成视频
             video_output = await self.video_generator.generate_single_video(
-                prompt=final_prompt,
+                prompt=final_prompt + "\n整个过程光影流动自然，人物动作与物体形变连贯衔接。",
                 reference_image_paths=frame_paths,
                 duration=int(shot_description.shot_duration or 5.0),
             )
@@ -402,6 +421,7 @@ class Script2VideoPipeline:
         frame_desc: str,
         visible_characters: List[CharacterInScene],
         character_portraits_registry: Dict[str, Dict[str, Dict[str, str]]],
+        style: str,
     ) -> ImageOutput:
 
         frame_image_path = os.path.join(self.working_dir, "shots", f"{shot_idx}", f"{frame_type}.png")
@@ -440,9 +460,9 @@ class Script2VideoPipeline:
                 print(f"☑️ Selected reference images and generated prompt for {frame_type} frame of shot {shot_idx}, saved to {selector_output_path}.")
 
             reference_image_path_and_text_pairs, prompt = selector_output["reference_image_path_and_text_pairs"], selector_output["text_prompt"]
-            prefix_prompt = ""
-            for i, (image_path, text) in enumerate(reference_image_path_and_text_pairs):
-                prefix_prompt += f"Image {i}: {text}\n"
+            prefix_prompt = f"style: {style}\n"
+            # for i, (image_path, text) in enumerate(reference_image_path_and_text_pairs):
+            #     prefix_prompt += f"Image {i}: {text}\n"
             prompt = f"{prefix_prompt}\n{prompt}"
             reference_image_paths = [item[0] for item in reference_image_path_and_text_pairs]
 
@@ -482,6 +502,7 @@ class Script2VideoPipeline:
         camera_tree = await self.camera_image_generator.construct_camera_tree(cameras=cameras, shot_descs=shot_descriptions)
         with open(camera_tree_path, "w", encoding="utf-8") as f:
             json.dump([camera.model_dump() for camera in camera_tree], f, ensure_ascii=False, indent=4)
+            
         print(f"✅ Constructed camera tree and saved to {camera_tree_path}.")
         return camera_tree
 
@@ -620,8 +641,9 @@ class Script2VideoPipeline:
                 json.dump([shot.model_dump() for shot in storyboard], f, ensure_ascii=False, indent=4)
             print(f"✅ Designed storyboard and saved to {storyboard_path}.")
             
-            if self.check_interrupt("storyboard"):
-                return
+        
+        if self.check_interrupt("storyboard"):
+            return storyboard
 
         for shot_brief_description in storyboard:
             self.shot_desc_events[shot_brief_description.idx] = asyncio.Event()
@@ -660,14 +682,17 @@ class Script2VideoPipeline:
             shot_description = await self.storyboard_artist.decompose_visual_description(
                 shot_brief_desc=shot_brief_description,
                 characters=characters,
-                retry_timeout=120,
+                retry_timeout=300,
             )
             with open(shot_description_path, 'w', encoding='utf-8') as f:
                 json.dump(shot_description.model_dump(), f, ensure_ascii=False, indent=4)
             print(f"✅ Decomposed visual description for shot {shot_brief_description.idx} and saved to {shot_description_path}.")
 
         self.shot_desc_events[shot_brief_description.idx].set()
-
+        
+        if self.check_interrupt("shot_description"):
+            return shot_description
+        
         if shot_description.variation_type in ["medium", "large"]:
             self.frame_events[shot_brief_description.idx] = {
                 "first_frame": asyncio.Event(),
