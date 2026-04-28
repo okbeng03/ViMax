@@ -15,9 +15,9 @@ idea = \
 """
 user_requirement = \
     """
-观众是儿童(3到8岁)，所有的书籍上面必须是汉字。
+观众是儿童(3到8岁)。
 """
-style = "动漫风格"
+style = "动漫风格。"
 
 
 async def main():
