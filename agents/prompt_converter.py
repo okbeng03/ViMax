@@ -18,6 +18,7 @@ TODO:: 基于规则的基本不可用，太死了；另外prompt是不是缺少�
 
 import re
 import logging
+import asyncio
 from typing import List, Optional
 from pydantic import BaseModel, Field
 from langchain.chat_models import init_chat_model
@@ -70,50 +71,81 @@ class LTXPromptFormat(BaseModel):
     atmosphere: str = Field(description="氛围描述")
 
 
+# system_prompt_template_convert_dialogue = \
+# """
+# [Role]
+# You are a professional prompt converter specialized in transforming dialogue-based video scripts into cinematic scene descriptions optimized for LTX Video 2.3 model.
+
+# [Task]
+# Your task is to convert dialogue-format prompts into LTX 2.3 compatible scene descriptions with the following key transformations:
+
+# 1. **Dialogue to Scene Description**: Convert dialogue format (e.g., "Alice: Hello" or "Alice (Happy): Hello") into narrative scene descriptions.
+#    - Instead of: "Alice: 你好"
+#    - Use: "Alice turns and smiles warmly, saying '你好'"
+
+# 2. **Bilingual Format**: Keep scene descriptions in English, but embed Chinese dialogue content within the English narrative.
+#    - Scene: "A cozy cafe with warm lighting"
+#    - Dialogue: "Alice waves and greets, '咖啡馆开张了！'"
+
+# 3. **Remove Colons in Dialogue**: LTX 2.3 does not support the colon format. Replace "Name: dialogue" with descriptive action sentences.
+#    - Wrong: "Alice: Hello Bob"
+#    - Correct: "Alice waves to Bob, 'Hello Bob'"
+
+# 4. **Emotion Mapping**: Map emotion tags to appropriate action descriptions.
+#    - (Happy) → smiles, laughs, waves happily
+#    - (Sad) → sighs, looks down, wipes tears
+#    - (Angry) → frowns, clenches fists, raises voice
+#    - (Surprised) → gasps, eyes widen, jumps back
+#    - (Curious) → leans forward, tilts head, raises eyebrow
+#    - (Thinking) → pauses, looks thoughtful, rubs chin
+
+# 5. **Cinematic Elements**: Add appropriate scene context and atmosphere.
+
+# [Input]
+# You will receive:
+# - Original audio descriptions from video scripts (dialogues, sound effects, narrations)
+# - Scene visual descriptions
+
+# [Output]
+# {format_instructions}
+
+# [Guidelines]
+# - Ensure all output values (except keys) match the language used in its original (Chinese).
+# - Keep the output concise but descriptive
+# - Focus on visualizable actions and expressions
+# - Ensure logical flow between sentences
+# - Maximum 5-6 key actions for a 5-second shot
+# """
+
 system_prompt_template_convert_dialogue = \
 """
 [Role]
-You are a professional prompt converter specialized in transforming dialogue-based video scripts into cinematic scene descriptions optimized for LTX Video 2.3 model.
+你是一个专业的提示转换器，专门用于将基于对话的视频脚本转换为针对LTX video 2.3模型优化的电影场景描述。
 
 [Task]
-Your task is to convert dialogue-format prompts into LTX 2.3 compatible scene descriptions with the following key transformations:
+你的任务是将音频描述（包含音效、对话、旁白等信息）融合到场景视觉描述中。
 
-1. **Dialogue to Scene Description**: Convert dialogue format (e.g., "Alice: Hello" or "Alice (Happy): Hello") into narrative scene descriptions.
-   - Instead of: "Alice: 你好"
-   - Use: "Alice turns and smiles warmly, saying '你好'"
-
-2. **Bilingual Format**: Keep scene descriptions in English, but embed Chinese dialogue content within the English narrative.
-   - Scene: "A cozy cafe with warm lighting"
-   - Dialogue: "Alice waves and greets, '咖啡馆开张了！'"
+1. **理解场景描述和音频描述**: 阅读并理解场景描述和音频描述，思考对应的音效、对话、旁白在视频场景的哪个时间段引入最合理。
+2. **Dialogue to Scene Description**: Convert dialogue format (e.g., "Alice: Hello" or "Alice (Happy): Hello") into narrative scene descriptions.
+  - Instead of: "Alice: 你好"
+  - Use: "Alice turns and smiles warmly, saying '你好'"
 
 3. **Remove Colons in Dialogue**: LTX 2.3 does not support the colon format. Replace "Name: dialogue" with descriptive action sentences.
-   - Wrong: "Alice: Hello Bob"
-   - Correct: "Alice waves to Bob, 'Hello Bob'"
-
-4. **Emotion Mapping**: Map emotion tags to appropriate action descriptions.
-   - (Happy) → smiles, laughs, waves happily
-   - (Sad) → sighs, looks down, wipes tears
-   - (Angry) → frowns, clenches fists, raises voice
-   - (Surprised) → gasps, eyes widen, jumps back
-   - (Curious) → leans forward, tilts head, raises eyebrow
-   - (Thinking) → pauses, looks thoughtful, rubs chin
-
-5. **Cinematic Elements**: Add appropriate scene context and atmosphere.
+  - Wrong: "Alice: Hello Bob"
+  - Correct: "Alice waves to Bob, 'Hello Bob'"
 
 [Input]
-You will receive:
-- Original audio descriptions from video scripts (dialogues, sound effects, narrations)
-- Scene visual descriptions
+你将收到：
+- Audio description: A detailed description of the audio in the shot. The audio input is enclosed within <Audio> and </Audio>.
+- Motion description: The motion description of the shot. Describe the dynamic visual changes within the shot (camera movement and the movement of elements within the frame). The motion input is enclosed within <Motion> and </Motion>
 
-[Output]
-{format_instructions}
+[Output Format]
+融合音频描述后场景描述
 
 [Guidelines]
-- Ensure all output values (except keys) match the language used in its original (Chinese).
-- Keep the output concise but descriptive
-- Focus on visualizable actions and expressions
-- Ensure logical flow between sentences
-- Maximum 5-6 key actions for a 5-second shot
+- 要保持场景视觉描述的意思不发生改变
+- 音频融入要自然，位置要正确
+- 确保句子之间的逻辑流畅
 """
 
 # [Role]
@@ -159,32 +191,42 @@ You will receive:
 # -确保句子之间的逻辑流畅
 # - 5秒射击最多5-6个关键动作
 
+# human_prompt_template_convert_dialogue = \
+# """
+# <ORIGINAL_AUDIO_DESC>
+# {audio_desc}
+# </ORIGINAL_AUDIO_DESC>
+
+# <ORIGINAL_MOTION_DESC>
+# {motion_desc}
+# </ORIGINAL_MOTION_DESC>
+
+# <SHOT_DURATION>
+# {shot_duration} seconds
+# </SHOT_DURATION>
+
+# [IMPORTANT]
+# Your task is to create a unified scene description that:
+# 1. Starts with scene setting (from visual_desc)
+# 2. Describes actions WITH dialogues integrated (from motion_desc + audio_desc combined)
+
+# Example transformation:
+# - motion_desc: "Camera pans slowly. Alice turns around."
+# - audio_desc: "Alice: Hello Bob!"
+# - WRONG: "Camera pans slowly. Alice turns around.\n[Speaker] Alice: Hello Bob!"
+# - CORRECT: "Camera pans slowly. Alice turns around and waves, saying 'Hello Bob!'"
+# """
+
 human_prompt_template_convert_dialogue = \
 """
-<ORIGINAL_AUDIO_DESC>
+<Audio>
 {audio_desc}
-</ORIGINAL_AUDIO_DESC>
+</Audio>
 
-<ORIGINAL_MOTION_DESC>
+<Motion>
 {motion_desc}
-</ORIGINAL_MOTION_DESC>
-
-<SHOT_DURATION>
-{shot_duration} seconds
-</SHOT_DURATION>
-
-[IMPORTANT]
-Your task is to create a unified scene description that:
-1. Starts with scene setting (from visual_desc)
-2. Describes actions WITH dialogues integrated (from motion_desc + audio_desc combined)
-
-Example transformation:
-- motion_desc: "Camera pans slowly. Alice turns around."
-- audio_desc: "Alice: Hello Bob!"
-- WRONG: "Camera pans slowly. Alice turns around.\n[Speaker] Alice: Hello Bob!"
-- CORRECT: "Camera pans slowly. Alice turns around and waves, saying 'Hello Bob!'"
+</Motion>
 """
-
 
 class PromptConverter:
     """
@@ -409,37 +451,34 @@ class PromptConverter:
             logger.warning("No chat model provided, falling back to rule-based conversion")
             return self.rule_based_convert(audio_desc, shot_duration)
         
-        parser = PydanticOutputParser(pydantic_object=LTXPromptFormat)
+        # parser = PydanticOutputParser(pydantic_object=LTXPromptFormat)
         
         messages = [
-            SystemMessage(content=system_prompt_template_convert_dialogue.format(
-                format_instructions=parser.get_format_instructions()
-            )),
+            SystemMessage(content=system_prompt_template_convert_dialogue),
             HumanMessage(content=human_prompt_template_convert_dialogue.format(
                 audio_desc=audio_desc or "(No audio)",
                 # visual_desc=visual_desc or "(No visual description)",
-                shot_duration=shot_duration,
+                # shot_duration=shot_duration,
                 motion_desc=motion_desc or "(No motion description)",
             )),
         ]
         
-        import asyncio
-        chain = self.chat_model | parser
+        chain = self.chat_model
         
         try:
-            result: LTXPromptFormat = await asyncio.wait_for(
+            result = await asyncio.wait_for(
                 chain.ainvoke(messages),
                 timeout=retry_timeout,
             )
             
             # 组合为最终 prompt
-            prompt_parts = [result.scene_setting]
-            prompt_parts.extend(result.actions)
-            prompt_parts.append(result.atmosphere)
+            # prompt_parts = [result.scene_setting]
+            # prompt_parts.extend(result.actions)
+            # prompt_parts.append(result.atmosphere)
             
-            desc = ". ".join(filter(None, prompt_parts))
-            logger.info(f"LLM conversion result: {desc}")
-            return desc
+            # desc = ". ".join(filter(None, prompt_parts))
+            logger.info(f"LLM conversion result: {result.content}")
+            return result.content
             
         except Exception as e:
             logger.error(f"LLM conversion failed: {e}, falling back to rule-based")
@@ -471,17 +510,17 @@ class PromptConverter:
             LTX 格式的 prompt，对话已融入动作描述中
         """
         # 检查是否需要 LLM 转换
-        parsed = self.parse_audio_description(audio_desc)
+        # parsed = self.parse_audio_description(audio_desc)
         
-        # 如果有多角色对话、复杂情绪、或旁白，使用 LLM
-        needs_llm = (
-            len(parsed.dialogues) > 2 or
-            any(d.emotion for d in parsed.dialogues) or
-            len(parsed.narrations) > 0 or
-            self.use_llm_conversion and self.chat_model
-        )
+        # # 如果有多角色对话、复杂情绪、或旁白，使用 LLM
+        # needs_llm = (
+        #     len(parsed.dialogues) > 2 or
+        #     any(d.emotion for d in parsed.dialogues) or
+        #     len(parsed.narrations) > 0 or
+        #     self.use_llm_conversion and self.chat_model
+        # )
         
-        if needs_llm and self.chat_model:
+        if self.chat_model:
             return await self.llm_convert(audio_desc, motion_desc, shot_duration)
         else:
             return self.rule_based_convert(audio_desc, shot_duration)
