@@ -209,6 +209,11 @@ class CameraImageGenerator:
         self,
         transition_video_path: str,
     ) -> ImageOutput:
+        """
+        通过 scenedetect 库分析过渡视频，检测场景切换点
+        基于 ContentDetector 检测，比较帧间差异，超过阈值时，则判断为场景切换。
+        存在场景切换，则取切换场景的首帧，否则取过渡视频尾帧。
+        """
         video = open_video(transition_video_path)
         scene_manager = SceneManager()
         scene_manager.add_detector(ContentDetector())
