@@ -226,7 +226,7 @@ class ShotDescription(BaseModel):
     # 镜头时长（秒），用于计算中间帧的绝对时间
     shot_duration: Optional[float] = Field(
         default=5.0,
-        description="镜头时长（秒），用于计算中间帧的时间位置。",
+        description="镜头时长（秒）。",
     )
     # sound_effect: Optional[str] = Field(
     #     default=None,
