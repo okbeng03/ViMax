@@ -48,7 +48,7 @@ video_generator:
   max_requests_per_minute: null
   max_requests_per_day: null
 
-working_dir: /Users/wangchangbin/ai/vimax_output5
+working_dir: /Users/wangchangbin/ai/vimax_output6
 
 # 中断步骤
 # story 生成故事
@@ -56,4 +56,7 @@ working_dir: /Users/wangchangbin/ai/vimax_output5
 # portrait 生成角色肖像
 # script 生成剧本
 # storyboard 生成故事板
-interrupt_step: storyboard
+# shot_description 生成镜头描述
+# camera_tree 生成相机树
+# camera_frame 生成相机帧
+interrupt_step: null
