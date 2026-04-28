@@ -211,7 +211,7 @@ class Idea2VideoPipeline:
         # 生成故事
         story = await self.develop_story(idea=idea, user_requirement=user_requirement)
         
-        if self.check_interrupt("sotry"):
+        if self.check_interrupt("story"):
             return
 
         # 生成故事的所有角色特征
@@ -242,6 +242,7 @@ class Idea2VideoPipeline:
         for idx, scene_script in enumerate(scene_scripts):
             scene_working_dir = os.path.join(self.working_dir, f"scene_{idx}")
             os.makedirs(scene_working_dir, exist_ok=True)
+            print(f"🎬 Starting scene {idx} video generation...")
             script2video_pipeline = Script2VideoPipeline(
                 chat_model=self.chat_model,
                 image_generator=self.image_generator,
@@ -257,7 +258,11 @@ class Idea2VideoPipeline:
                 character_portraits_registry=character_portraits_registry,
             )
             all_video_paths.append(final_video_path)
+            print(f"☑️ Completed scene {idx} video generation, saved to {final_video_path}.")
 
+        if self.interrupt_step is not None:
+            return
+        
         # 合并所有场景视频
         final_video_path = os.path.join(self.working_dir, "final_video.mp4")
         if os.path.exists(final_video_path):
