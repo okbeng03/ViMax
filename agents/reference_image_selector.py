@@ -16,8 +16,9 @@ system_prompt_template_select_reference_images_only_text = \
 You are a professional visual creation assistant skilled in multimodal image analysis and reasoning.
 
 [Task]
-Your core task is to intelligently select the most suitable reference images from a provided set of reference image descriptions (including multiple character reference images and existing scene images from prior frames) based on the user's text description (describing the target frame), ensuring that the subsequently generated image meets the following key consistencies:
+Your core task is to intelligently select the most suitable reference images from a provided set of reference image descriptions (including multiple character reference images、Chinese characters reference images and existing scene images from prior frames) based on the user's text description (describing the target frame), ensuring that the subsequently generated image meets the following key consistencies:
 - Character Consistency: The appearance (e.g. gender, ethnicity, age, facial features, hairstyle, body shape), clothing, expression, posture, etc., of the generated character should highly match the reference image descriptions.
+- Chinese characters Consistency: The generated Chinese characters should be consistent with the image of the shape of the character in the corresponding period.
 - Environmental Consistency: The scene of the generated image (e.g., background, lighting, atmosphere, layout) should remain coherent with the existing image descriptions from prior frames.
 - Style Consistency: The visual style of the generated image (e.g., realistic, cartoon, film-like, color tone) should harmonize with the reference image descriptions.
 
@@ -34,9 +35,11 @@ Below is an example of the input format:
 <SEQ_DESC>
 Image 0: A front-view portrait of Alice.
 Image 1: A front-view portrait of Bob.
-Image 2: [Camera 0] Medium shot of the supermarket aisle. Alice and Bob are shown in profile facing the right side of the frame. Bob is on the right side of the frame, and Alice is on the left side. Alice, looking down and pushing a shopping cart, follows closely behind Bob and accidentally bumps into his heel.
-Image 3: [Camera 1] Shot from Alice's over-the-shoulder perspective. Alice is on the side closer to the camera, with only her shoulder appearing in the lower left corner of the frame. Bob is on the side farther from the camera, positioned slightly right of center in the frame. Bob quickly turns around, and his expression shifts from neutral to surprised.
-Image 4: [Camera 2] Shot from Bob's over-the-shoulder perspective. Bob is on the side closer to the camera, with only his shoulder appearing in the lower right corner of the frame. Alice is on the side farther from the camera, positioned slightly left of center in the frame. Alice looks down, then up as she prepares to apologize. Upon realizing it's someone familiar, her expression shifts to one of surprise.
+Image 2: 甲骨文 of the character 日.如果未明确，泛指古人的汉字
+Image 3: 楷书、简体 of the character 日.如果未明确，泛指现在的汉字
+Image 4: [Camera 0] Medium shot of the supermarket aisle. Alice and Bob are shown in profile facing the right side of the frame. Bob is on the right side of the frame, and Alice is on the left side. Alice, looking down and pushing a shopping cart, follows closely behind Bob and accidentally bumps into his heel.
+Image 5: [Camera 1] Shot from Alice's over-the-shoulder perspective. Alice is on the side closer to the camera, with only her shoulder appearing in the lower left corner of the frame. Bob is on the side farther from the camera, positioned slightly right of center in the frame. Bob quickly turns around, and his expression shifts from neutral to surprised.
+Image 6: [Camera 2] Shot from Bob's over-the-shoulder perspective. Bob is on the side closer to the camera, with only his shoulder appearing in the lower right corner of the frame. Alice is on the side farther from the camera, positioned slightly left of center in the frame. Alice looks down, then up as she prepares to apologize. Upon realizing it's someone familiar, her expression shifts to one of surprise.
 </SEQ_DESC>
 
 
@@ -64,6 +67,7 @@ You need to select up to 8 of the most relevant reference images based on the us
 # (任务) 
 # 您的核心任务是根据用户的文本描述（描述目标帧），从提供的一组参考图像描述（包括多个字符参考图像和先前帧的现有场景图像）中智能地选择最合适的参考图像，确保随后生成的图像满足以下关键一致性： 
 # -角色一致性：生成角色的外观（如性别，种族，年龄，面部特征，发型，体型），服装，表情，姿势等应与参考图像描述高度匹配。 
+# -汉字一致性: 生成的汉字要与该汉字对应时期的字形的图像保持一致。
 # -环境一致性：生成图像的场景（例如，背景，照明，氛围，布局）应与先前帧的现有图像描述保持一致。 
 # -风格一致性：生成图像的视觉风格（例如，逼真的，卡通的，电影般的，色调）应该与参考图像描述协调一致。 
  
@@ -204,6 +208,10 @@ human_prompt_template_select_reference_images = \
 <FRAME_DESC>
 {frame_description}
 </FRAME_DESC>
+
+<SEQ_IMAGES>
+{image_descriptions}
+<SEQ_IMAGES>
 """
 
 
@@ -218,6 +226,7 @@ class RefImageIndicesAndTextPrompt(BaseModel):
     )
     text_prompt: str = Field(
         description="Text description to guide the image generation. You need to describe the image to be generated, specifying which elements in the generated image should reference which image (and which elements within it). For example, 'Create an image following the given description: \nThe man is standing in the landscape. The man should reference Image 0. The landscape should reference Image 1.' Here, the index of the reference image should refer to its position in the ref_image_indices list, not the sequence number in the provided image list. Refer to the reference image must be in the format of Image N. Do not use any other word except Image.",
+        # 指导图像生成的文字描述。您需要描述要生成的图像，指定生成的图像中的哪些元素应该引用哪个图像（以及其中的哪些元素）。例如，“按照给定的描述创建一个图像：\n这个男人站在风景中。这个人应该参考图0。景观应该参考图1。”这里，参考映像的索引应该指向它在ref_image_indices列表中的位置，而不是提供的映像列表中的序列号。参考图片必须是图片n的格式，不要使用除图片以外的任何其他词。
         examples=[
             "Create an image based on the following guidance: \n Make modifications based on Image 1: Bob's body turns to face the camera, while all other elements remain unchanged. Bob's appearance should refer to Image 0.",
             "Create an image following the given description: \nThe man is standing in the landscape. The man should reference Image 0. The landscape should reference Image 1."
@@ -256,19 +265,12 @@ class ReferenceImageSelector:
         if len(available_image_path_and_text_pairs) >= 8 or only_text_model:
             human_content = []
             for idx, (_, text) in enumerate(available_image_path_and_text_pairs):
-                human_content.append({
-                    "type": "text",
-                    "text": f"Image {idx}: {text}"
-                })
-            human_content.append({
-                "type": "text",
-                "text": human_prompt_template_select_reference_images.format(frame_description=frame_description)
-            })
+                human_content.append(f"Image {idx}: {text}")
             parser = PydanticOutputParser(pydantic_object=RefImageIndicesAndTextPrompt)
 
             messages = [
                 SystemMessage(content=system_prompt_template_select_reference_images_only_text.format(format_instructions=parser.get_format_instructions())),
-                HumanMessage(content=human_content)
+                HumanMessage(content=human_prompt_template_select_reference_images.format(frame_description=frame_description, image_descriptions="\n".join(human_content)))
             ]
 
             chain = self.chat_model | parser
@@ -291,24 +293,14 @@ class ReferenceImageSelector:
         # 2. filter images using multimodal model
         human_content = []
         for idx, (image_path, text) in enumerate(filtered_image_path_and_text_pairs):
-            human_content.append({
-                "type": "text",
-                "text": f"Image {idx}: {text}"
-            })
-            human_content.append({
-                "type": "image_url",
-                "image_url": {"url": image_path_to_b64(image_path)}
-            })
-        human_content.append({
-            "type": "text",
-            "text": human_prompt_template_select_reference_images.format(frame_description=frame_description)
-        })
+            human_content.append(f"Image {idx}: {text}")
+            human_content.append(image_path_to_b64(image_path))
 
         parser = PydanticOutputParser(pydantic_object=RefImageIndicesAndTextPrompt)
 
         messages = [
             SystemMessage(content=system_prompt_template_select_reference_images_multimodal.format(format_instructions=parser.get_format_instructions())),
-            HumanMessage(content=human_content)
+            HumanMessage(content=human_prompt_template_select_reference_images.format(frame_description=frame_description, image_descriptions="\n".join(human_content)))
         ]
 
         chain = self.chat_model | parser
