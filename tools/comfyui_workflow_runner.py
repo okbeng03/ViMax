@@ -24,6 +24,7 @@ from typing import Any, List
 import aiohttp
 from websockets.sync.client import connect as ws_connect
 from utils.rate_limiter import RateLimiter
+from configs.config import working_dir
 
 logger = logging.getLogger(__name__)
 
@@ -160,7 +161,7 @@ class ComfyUIWorkflowRunner:
         workflow_path: str,
         workflow: dict[str, Any],
         output_node_ids: List[int | str],
-        timeout: int = 300
+        timeout: int = 1000
     ) -> dict[int | str, Any]:
         """
         执行工作流（加入全局队列，顺序执行）
@@ -269,16 +270,18 @@ class ComfyUIWorkflowRunner:
     async def _execute_workflow(self, workflow: dict[str, Any], timeout: int) -> dict[int | str, Any]:
         """执行工作流"""
 
+        # 记录工作流开始执行时间
+        workflow_start_time = time.time()
         prompt_id = await self._queue_prompt(workflow)
-        logger.info(f"Comfyui Queued prompt: {prompt_id}")
+        logger.info(f"Comfyui Queued prompt: {prompt_id}. 开始时间: {workflow_start_time}")
         # TODO:: 配置化
-        workflow_path = os.path.join("/Users/wangchangbin/ai/vimax_output5", f"{prompt_id}.json")
+        workflow_path = os.path.join(f"{working_dir}/workflows", f"{prompt_id}.json")
         
         with open(workflow_path, 'w', encoding='utf-8') as f:
             f.write(json.dumps(workflow, ensure_ascii=False, indent=4))
         
-        # 等待执行完成
-        outputs = await self._wait_for_outputs(prompt_id, timeout)
+        # 等待执行完成，传入开始时间用于计算耗时
+        outputs = await self._wait_for_outputs(prompt_id, timeout, workflow_start_time)
         
         return outputs
     
@@ -301,11 +304,16 @@ class ComfyUIWorkflowRunner:
                 result = await response.json()
                 return result["prompt_id"]
     
-    async def _wait_for_outputs(self, prompt_id: str, timeout: int) -> dict[int | str, Any]:
+    async def _wait_for_outputs(self, prompt_id: str, timeout: int, workflow_start_time: float | None = None) -> dict[int | str, Any]:
         """
         等待并获取输出
         
         注意：新格式中节点 ID 是整数，outputs 字典的 key 也应该是整数
+        
+        Args:
+            prompt_id: prompt 标识符
+            timeout: 超时时间
+            workflow_start_time: 工作流开始执行的时间戳（用于计算总耗时）
         """
 
         ws_url = f"{self.base_url.replace('http', 'ws')}/ws?clientId={self.client_id}"
@@ -321,10 +329,10 @@ class ComfyUIWorkflowRunner:
         for oid in self.output_node_ids:
             normalized_output_ids.add(oid)
             
-        start_time = None
+        ws_connect_time = None
         
         def ws_receiver():
-            nonlocal start_time
+            nonlocal ws_connect_time
             try:
                 with ws_connect(ws_url) as ws:
                     while not result_holder["finished"]:
@@ -334,8 +342,8 @@ class ComfyUIWorkflowRunner:
                         if isinstance(message, bytes):
                             continue
                         
-                        if not start_time:
-                            start_time = time.time()
+                        if not ws_connect_time:
+                            ws_connect_time = time.time()
                         
                         data = json.loads(message)
                         msg_type = data.get("type")
@@ -363,7 +371,13 @@ class ComfyUIWorkflowRunner:
                                 outputs[node_id] = output
                         
                         elif msg_type == "execution_success":
-                            logger.info("任务成功完成！")
+                            # 计算并输出耗时
+                            end_time = time.time()
+                            if workflow_start_time:
+                                total_duration = end_time - workflow_start_time
+                                logger.info(f"Prompt {prompt_id} 执行成功，总耗时: {total_duration:.2f} 秒")
+                            else:
+                                logger.info(f"Prompt {prompt_id} 执行成功")
                             result_holder["finished"] = True
                             break
         
@@ -392,7 +406,7 @@ class ComfyUIWorkflowRunner:
 
         while not result_holder["finished"]:
             await asyncio.sleep(0.5)
-            if start_time and time.time() - start_time > timeout:
+            if ws_connect_time and time.time() - ws_connect_time > timeout:
                 result_holder["finished"] = True
                 result_holder["error"] = "Timeout waiting for workflow completion"
         
