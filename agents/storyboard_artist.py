@@ -39,44 +39,59 @@ The user will provide the following input.
 {format_instructions}
 
 [Character Consistency Rule - CRITICAL]
-When splitting a scene into shots, you MUST ensure each shot maintains character consistency. The rule is:
+When splitting a scene into shots, you MUST ensure each shot maintains character consistency.
 
-**Character entry/exit MUST happen at shot boundaries, NOT in the middle of a shot.**
+A shot must maintain a STABLE visible character set from start to end.
 
-This means:
-- If a character enters at time T, the shot must end at or before T (or start at or after T)
-- If a character exits at time T, the shot must end at or before T (or start at or after T)
-- A shot's character set must be STABLE from start to end
+Allowed cases:
+- Characters are visible in both the first and last frame → VALID
+- A character enters EXACTLY at the last frame → VALID (entry must be explicitly described)
+- A character exits EXACTLY at the last frame → VALID (exit must be explicitly described)
 
-Valid examples:
-- Shot 1 (0-4s): First frame [A], last frame [A, B] → VALID (B enters at 4s, which is the boundary)
-- Shot 2 (4s onwards): First frame [B, C], last frame [B, C] → VALID (stable)
-- Shot 1 (0-5s): First frame [A, B], last frame [A, B] → VALID (stable, no changes)
+Forbidden cases:
+- A character appears and disappears within the same shot
+- A character is visible in the middle of the shot but NOT in the first or last frame
+- Any mid-shot entry or exit without boundary definition
 
-INVALID example (会导致角色被捏造):
-- 0-4s: [A] → [A, B]
-- 5s: [A, C]
-- If we cut at 5s: Shot 1 (0-5s): First frame [A], last frame [A, C] → INVALID!
-  - Why? Because B enters at 4s but exits before 5s. This creates a "phantom character" B that appears then disappears mid-shot.
-- CORRECT: Cut at 4s → Shot 1 (0-4s): First frame [A], last frame [A, B] → VALID
-           Shot 2 (4s onwards): First frame [A, C], last frame [A, C] → VALID
+Important:
+- Character entry/exit MUST happen at shot boundaries
+- Entry/exit events must be explicitly described in the visual description
+
+Goal:
+- Prevent "phantom characters"
+- Ensure temporal consistency for video generation
            
 [Camera Reuse Rule - IMPORTANT]
-A camera can ONLY be reused if ALL of the following are consistent:
-- Camera angle (e.g., eye-level, low angle, high angle)
-- Subject orientation (e.g., front-facing, side-facing)
-- Shot composition (e.g., close-up, medium shot, wide shot)
-- Narrative function (e.g., action, reaction, dialogue)
+A camera can ONLY be reused if ALL of the following remain consistent:
 
-If ANY of these changes significantly, a NEW camera index MUST be assigned.
+- Camera angle (e.g., eye-level, low angle, high angle)
+- Camera spatial perspective (position and viewing direction)
+- Narrative focus (same primary subject)
+
+Allowed variations (camera CAN still be reused):
+- Character pose changes (e.g., standing → sitting)
+- Minor framing adjustments (slight zoom or repositioning)
+- Character expression or emotion changes
+
+A NEW camera MUST be assigned if ANY of the following changes:
+
+- Camera angle changes (e.g., eye-level → high angle)
+- Subject changes (e.g., focus shifts from A to B)
+- Shot composition changes significantly (e.g., close-up ↔ wide shot)
+- Camera crosses the axis of action (left-right reversal)
+
+Important:
+- Camera reuse is based on spatial consistency, NOT just angle
+- Do NOT reuse camera if it causes visual inconsistency in generated frames
 
 [Guidelines]
 - Ensure all output values (except keys) match the language used in the script.
 - Each shot must have a clear narrative purpose—such as establishing the setting, showing character relationships, or highlighting reactions.
-- Shot Duration Requirement: Each shot MUST be exactly 5 seconds long. The dialogue content should fit naturally within this 5-second duration. If the dialogue is longer, consider breaking it into multiple shots or condensing the speech.
+- Duration requirement for each shot: The maximum duration for each shot is 8 seconds(include). The duration of the conversation should not exceed 8 seconds. If the conversation is long, consider dividing it into multiple shots.
 - Use cinematic language deliberately: close-ups for emotion, wide shots for context, and varied angles to direct audience attention.
 - When designing a new shot, first consider whether it can be filmed using an existing camera position. Introduce a new one only if the shot size, angle, and focus differ significantly. If the camera undergoes significant movement, it cannot be used thereafter.
 - Keep character names in visual descriptions and speaker fields consistent with the character list. In visual descriptions, enclose names in angle brackets (e.g., <Alice>), but not in dialogue or speaker fields.
+- Chinese characters are also characters: If a Chinese character is included in the character list, it should also be included as a character in the visual description. If the character "日" appears in the character list, it should be changed to <日字>.
 - When describing visual elements, it is necessary to indicate the position of the element within the frame. For example, Character A is on the left side of the frame, facing toward the right, with a table in front of him. The table is positioned slightly to the left of the center of the frame. Ensure that invisible elements are not included. For instance, do not describe someone behind a closed door if they cannot be seen.
 - Avoid unsafe content (violence, discrimination, etc.) in visual descriptions. Use indirect methods like sound or suggestive imagery when needed, and substitute sensitive elements (e.g., ketchup for blood).
 - Assign at most one dialogue line per character per shot. Each line of dialogue should correspond to a shot.
@@ -84,6 +99,30 @@ If ANY of these changes significantly, a NEW camera index MUST be assigned.
 - When the shot focuses on a character, describe which specific body part the focus is on.
 - When describing a character, it is necessary to indicate the direction they are facing.
 """
+
+# [Action Generation Constraints - IMPORTANT]
+# * Limit the complexity of actions: 
+#     - Only one main action is allowed in each shot 
+#     - Do not stack multiple actions (such as clapping hands, jumping, or speaking simultaneously). 
+#     - Large body movements (jumping, obvious up and down movements, rapid movement) are prohibited. 
+ 
+# * Close-up shot restrictions: 
+#     - In close-ups of the face, the body must remain stable 
+#     - Only changes in facial expressions and slight head movements are allowed 
+#     - Hand movements should be slow and small in amplitude 
+ 
+# * Restrictions on sports types: 
+#     - Avoid periodic movements (such as continuous up and down bouncing) 
+#     - Give priority to using continuous and smooth micro-movements 
+#     - The movements must transition naturally and sudden changes are not allowed 
+ 
+# * Ways of expressing emotions: 
+#     - Emotions are reflected through expressions, eye contact, and tone of voice 
+#     - Do not express emotions through large body movements 
+ 
+# * Complexity Control: 
+#     - All actions have a complexity of no more than 2 (minor actions). 
+#     - If the description exceeds the limit, it will be automatically simplified to a more stable action
 
 # [Role] 
 # 你是一个专业的故事板艺术家，具有以下核心技能： 
@@ -109,13 +148,86 @@ If ANY of these changes significantly, a NEW camera index MUST be assigned.
 # (输出)
 # {format_instructions}
 
+# [角色一致性规则-关键]
+
+# 当把一个场景分成几个镜头时，你必须确保每个镜头都保持角色的一致性。
+
+# 一个镜头必须从头到尾保持一个稳定的可见字符集。
+
+# 允许的情况下:
+# -字符在第一帧和最后一帧都可见→VALID
+# -一个字符在最后一帧输入EXACTLY→VALID（输入必须明确描述）
+# -一个字符在最后一帧退出→VALID（退出必须明确描述）
+
+# 被禁止的情况下:
+# 一个角色在同一个镜头中出现和消失
+# -角色在镜头中间可见，但在第一帧或最后一帧不可见
+# -任何没有边界定义的中景进入或退出
+
+# 重要:
+# -角色进入/退出必须发生在镜头边界
+# -进入/退出事件必须在视觉描述中明确描述
+
+# 目标:
+# -防止“幽灵字符”
+# —确保视频生成的时间一致性
+ 
+# [相机重复使用规则-重要]
+# 相机只能重复使用，如果所有以下保持一致：
+
+# -相机角度（例如：眼平、低角度、高角度）
+# -相机空间透视（位置和观看方向）
+# -叙述焦点（相同的主要主题）
+
+# 允许的变化（相机仍然可以重复使用）：
+# -角色姿势变化（例如，站→坐）
+# -轻微的取景调整（轻微变焦或重新定位）
+# -人物表情或情绪变化
+
+# 如果发生以下任何变化，必须分配一个新的摄像机：
+
+# -镜头角度变化（例如，眼平→高角度）
+# -主题变化（例如，焦点从A转移到B）
+# -镜头组成有显著变化（例如，特写↔广角镜头）
+# -相机穿过动作轴（左右反转）
+
+# 重要:
+# -相机重用是基于空间一致性，而不仅仅是角度
+# -不要重复使用相机，如果它会导致生成帧的视觉不一致
+
+# 【动作生成约束】
+
+# 1. 限制动作复杂度：
+# - 每个镜头仅允许一个主要动作
+# - 禁止多动作叠加（如同时拍手、跳动、说话）
+# - 禁止大幅度身体位移（跳跃、明显上下起伏、快速移动）
+
+# 2. 特写镜头限制：
+# - 在面部特写中，身体必须保持稳定
+# - 仅允许面部表情变化和轻微头部运动
+# - 手部动作应缓慢且幅度小
+
+# 3. 运动类型限制：
+# - 避免周期性运动（如持续上下弹跳）
+# - 优先使用连续平滑的微动作
+# - 动作必须自然过渡，不允许突然变化
+
+# 4. 情绪表达方式：
+# - 情绪通过表情、眼神、语气体现
+# - 不通过大幅肢体动作表达情绪
+
+# 5. 复杂度控制：
+# - 所有动作复杂度 ≤ 2（轻微动作）
+# - 如果描述超过限制，自动简化为更稳定的动作
+
 # (指南)
 # —确保所有输出值（除关键字外）与脚本使用的语言一致。
 # -每个镜头必须有一个明确的叙事目的，如建立背景，显示人物关系，或突出反应。
-# -镜头时长要求：每个镜头必须是恰好 5 秒。对话内容应该自然地适应这个 5 秒时长。如果对话较长，考虑将其分成多个镜头或精简发言。
+# -镜头时长要求：每个镜头最长为 8 秒。对话内容不应该超过 8 秒时长。如果对话较长，考虑将其分成多个镜头。
 # -刻意使用电影语言：特写镜头表达情感，广角镜头表达背景，以及不同的角度来吸引观众的注意力。 
 # 当设计一个新的镜头时，首先考虑它是否可以使用现有的相机位置拍摄。只有在镜头大小、角度和焦距明显不同的情况下，才引入新的镜头。如果相机发生了明显的移动，它就不能再使用了。 
 # 保持角色名称在视觉描述和说话字段与角色列表一致。在视觉描述中，将名称括在尖括号中（例如，<Alice>），但不要在dialogue或speaker字段中。 
+# - 汉字也是角色: 如果汉字包含在character列表中，那也要将其作为角色包含在视觉描述中。如"日"字如果出现在character列表，那要变成<日字>。
 # -在描述视觉元素时，有必要指出元素在框架中的位置。例如，人物A在画面的左侧，面朝右，前面有一张桌子。桌子的位置在画面中心偏左一点。确保不包含不可见的元素。例如，如果你看不见关着门的人，就不要描述他们。 
 # -避免视觉描述中的不安全内容（暴力、歧视等）。必要时使用声音或暗示性图像等间接方法，并用敏感元素代替（例如，用番茄酱代替血液）。 
 # -每个角色每个镜头最多分配一条对话线。每一行对话都应该对应一个镜头。 
@@ -280,6 +392,9 @@ class VisDescDecompositionResponse(BaseModel):
             "This shot only shows Alice speaking and the changes in her facial expressions, thus the variation type is small.",
         ],
     )
+    shot_duration: int = Field(
+        description="The duration of the shot in seconds. Maximum value is 8 seconds（include）.",
+    )
 
 
 
@@ -370,4 +485,5 @@ class StoryboardArtist:
             lf_vis_char_idxs=decomposition.lf_vis_char_idxs,
             motion_desc=decomposition.motion_desc,
             audio_desc=shot_brief_desc.audio_desc,
+            shot_duration=decomposition.shot_duration,
         )
