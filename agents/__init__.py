@@ -4,8 +4,9 @@ from .camera_image_generator import CameraImageGenerator
 from .character_extractor import CharacterExtractor
 from .character_portraits_generator import CharacterPortraitsGenerator
 from .reference_image_selector import ReferenceImageSelector
-from .prompt_converter import PromptConverter, convert_to_ltx_format
+from .prompt_converter import PromptConverter
 from .intermediate_frame_planner import IntermediateFramePlanner, plan_intermediate_frames
+from .narration_agent import NarrationAgent
 
 __all__ = [
     "Screenwriter",
@@ -15,7 +16,7 @@ __all__ = [
     "CharacterPortraitsGenerator",
     "ReferenceImageSelector",
     "PromptConverter",
-    "convert_to_ltx_format",
     "IntermediateFramePlanner",
     "plan_intermediate_frames",
+    "NarrationAgent",
 ]
