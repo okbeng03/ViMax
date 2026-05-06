@@ -20,6 +20,8 @@ from .video_generator_veo_google_api import VideoGeneratorVeoGoogleAPI
 from .video_generator_veo_yunwu_api import VideoGeneratorVeoYunwuAPI
 from .video_generator_comfyui_ltx import VideoGeneratorComfyUILTX
 
+# audio generators
+from .audio_generator_comfyui_qwen import AudioGeneratorComfyUIQwenTTS
 
 __all__ = [
     "ImageGenerator",
@@ -36,4 +38,5 @@ __all__ = [
     "VideoGeneratorVeoGoogleAPI",
     "VideoGeneratorVeoYunwuAPI",
     "VideoGeneratorComfyUILTX",
+    "AudioGeneratorComfyUIQwenTTS",
 ]

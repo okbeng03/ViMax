@@ -25,6 +25,7 @@ class RenderBackend:
 
     image_generator: Any
     video_generator: Any
+    audio_generator: Any
 
     @classmethod
     def from_config(cls, config: Dict[str, Any]) -> "RenderBackend":
@@ -35,14 +36,16 @@ class RenderBackend:
         """
         img_cfg = config["image_generator"]
         vid_cfg = config["video_generator"]
+        aud_cfg = config["audio_generator"]
 
         image_gen = _instantiate(img_cfg, _build_rate_limiter(img_cfg))
         video_gen = _instantiate(vid_cfg, _build_rate_limiter(vid_cfg))
+        audio_gen = _instantiate(aud_cfg, _build_rate_limiter(aud_cfg))
 
-        logging.info("RenderBackend: image=%s, video=%s",
-                     img_cfg["class_path"], vid_cfg["class_path"])
+        logging.info("RenderBackend: image=%s, video=%s, audio=%s",
+                     img_cfg["class_path"], vid_cfg["class_path"], aud_cfg["class_path"])
 
-        return cls(image_generator=image_gen, video_generator=video_gen)
+        return cls(image_generator=image_gen, video_generator=video_gen, audio_generator=audio_gen)
 
 
 def _build_rate_limiter(section: Dict[str, Any]) -> RateLimiter | None:

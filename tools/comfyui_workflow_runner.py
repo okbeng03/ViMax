@@ -155,6 +155,42 @@ class ComfyUIWorkflowRunner:
                     
                     result = await response.json()
                     return result["name"]
+                
+    async def upload_audio(
+        self,
+        audio_path: str,
+    ) -> str:
+        """上传音频"""
+        
+        url = f"{self.base_url}/upload/image"
+        
+        # 根据文件扩展名识别 MIME 类型
+        ext = Path(audio_path).suffix.lower()
+        content_type_map = {
+            ".mp3": "audio/mpeg",
+            ".wav": "audio/wav",
+            ".flac": "audio/flac",
+        }
+
+        content_type = content_type_map.get(ext, "application/octet-stream")
+        # 生成随机文件名
+        filename = f"{uuid.uuid4()}{ext}"
+        
+        async with aiohttp.ClientSession() as session:
+            with open(audio_path, "rb") as f:
+                data = aiohttp.FormData()
+                data.add_field("image", f, filename=filename, content_type=content_type)
+                data.add_field("type", "input")
+                data.add_field("overwrite", "true")
+
+                async with session.post(url, data=data) as response:
+                    if response.status != 200:
+                        print(4444444, response)
+                        error_text = await response.text()
+                        raise RuntimeError(f"Failed to upload audio: {error_text}")
+                    
+                    result = await response.json()
+                    return result["name"]
 
     async def run(
         self,
@@ -389,7 +425,7 @@ class ComfyUIWorkflowRunner:
 
                         # 检查是否全部完成
                         if all(oid in outputs for oid in normalized_output_ids):
-                            result_holder["outputs"] = outputs
+                            result_holder["outputs"] = {oid: outputs[oid] for oid in normalized_output_ids}
                             result_holder["finished"] = True
                             break
                             
@@ -414,7 +450,7 @@ class ComfyUIWorkflowRunner:
         
         if result_holder["error"]:
             raise RuntimeError(f"Workflow execution error: {result_holder['error']}")
-        
+
         return result_holder["outputs"] or outputs
     
     def get_output_paths(self, outputs: dict[int | str, Any]) -> dict[int | str, Any]:
@@ -434,6 +470,8 @@ class ComfyUIWorkflowRunner:
                 paths[node_id] = t.format(**output["gifs"][0])
             elif "videos" in output:
                 paths[node_id] = t.format(**output["videos"][0])
+            elif "audio" in output:
+                paths[node_id] = t.format(**output["audio"][0])
             elif "ui" in output:
                 # ComfyUI 的 UI 输出格式
                 ui_data = output["ui"]
