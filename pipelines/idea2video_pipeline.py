@@ -19,12 +19,14 @@ class Idea2VideoPipeline:
         chat_model: str,
         image_generator: str,
         video_generator: str,
+        audio_generator: str,
         working_dir: str,
         interrupt_step: str = None,
     ):
         self.chat_model = chat_model
         self.image_generator = image_generator
         self.video_generator = video_generator
+        self.audio_generator = audio_generator
         self.working_dir = working_dir
         self.interrupt_step = interrupt_step
         os.makedirs(self.working_dir, exist_ok=True)
@@ -48,6 +50,7 @@ class Idea2VideoPipeline:
             chat_model=chat_model,
             image_generator=backend.image_generator,
             video_generator=backend.video_generator,
+            audio_generator=backend.audio_generator,
             working_dir=config["working_dir"],
             interrupt_step=config["interrupt_step"],
         )
@@ -247,6 +250,7 @@ class Idea2VideoPipeline:
                 chat_model=self.chat_model,
                 image_generator=self.image_generator,
                 video_generator=self.video_generator,
+                audio_generator=self.audio_generator,
                 working_dir=scene_working_dir,
                 interrupt_step=self.interrupt_step,
             )
