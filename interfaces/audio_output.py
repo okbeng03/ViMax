@@ -1,11 +1,10 @@
 from typing import Literal, Union
+from utils.audio import download_audio
 
-from utils.video import download_video
 
-
-class VideoOutput:
+class AudioOutput:
     fmt: Literal["url", "bytes"]
-    ext: str = "mp4"
+    ext: str = "flac"
     data: Union[str, bytes]
 
     def __init__(
@@ -24,7 +23,7 @@ class VideoOutput:
         Args:
             path (str): Path where the video will be saved.
         """
-        download_video(self.data, path)
+        download_audio(self.data, path)
 
     def save_bytes(self, path: str) -> None:
         """Save a bytes object to the specified path.
