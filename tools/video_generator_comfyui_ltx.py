@@ -37,8 +37,8 @@ from utils.rate_limiter import RateLimiter
 
 logger = logging.getLogger(__name__)
 
-first_frame_workflow_path = "workflows/LTX2_3_first_frame.json"
-mutil_frame_workflow_path = "workflows/LTX2_3_mutil_frame.json"
+first_frame_workflow_path = "workflows/LTX2_3_first_frame_audio.json"
+mutil_frame_workflow_path = "workflows/LTX2_3_mutil_frame_audio.json"
 first_frame_output_node_ids = ["75"]
 mutil_frame_output_node_ids = ["649"]
 mutil_sigmas = {
@@ -96,6 +96,7 @@ class VideoGeneratorComfyUILTX:
         aspect_ratio: str = "16:9",
         fps: Literal[16, 24] = 16,
         duration: Literal[5, 10] = 5,
+        audio_name: Optional[str] = None,
     ) -> dict[str, Any]:
         """
         加载首帧工作流
@@ -106,12 +107,19 @@ class VideoGeneratorComfyUILTX:
         image_name = await runner.upload_image(reference_image_paths[0])
         workflow["269"]["inputs"]["image"] = image_name
         noise_seed = random.randint(1, max_noise)
-        workflow["270"]["inputs"]["noise_seed"] = noise_seed
+        # workflow["270"]["inputs"]["noise_seed"] = noise_seed
         workflow["271"]["inputs"]["noise_seed"] = noise_seed
         workflow["294"]["inputs"]["value"] = fps
         workflow["313"]["inputs"]["value"] = prompt
         workflow["314"]["inputs"]["value"] = duration
         workflow["316"]["inputs"]["aspect_ratio"] = aspect_ratio
+        
+        if audio_name:
+            # 替换音频
+            workflow["318"]["inputs"]["audio"] = audio_name
+        else:
+            # 没有音频，直接连接采样输出的audio
+            workflow["304"]["inputs"]["audio"] = ["291", 0]
         
         return workflow
     
@@ -124,6 +132,7 @@ class VideoGeneratorComfyUILTX:
         aspect_ratio: str = "16:9",
         fps: Literal[16, 24] = 16,
         duration: Literal[5, 10] = 5,
+        audio_name: Optional[str] = None,
     ) -> dict[str, Any]:
         """
         加载多帧工作流
@@ -133,12 +142,19 @@ class VideoGeneratorComfyUILTX:
         workflow["649"]["inputs"]["filename_prefix"] = str(uuid.uuid4())
         noise_seed = random.randint(1, max_noise)
         workflow["636"]["inputs"]["noise_seed"] = noise_seed
-        workflow["632"]["inputs"]["noise_seed"] = noise_seed
+        # workflow["632"]["inputs"]["noise_seed"] = noise_seed
         workflow["625"]["inputs"]["value"] = fps
         workflow["627"]["inputs"]["value"] = float(fps)
         workflow["672"]["inputs"]["text"] = prompt
         workflow["673"]["inputs"]["value"] = duration
         workflow["700"]["inputs"]["aspect_ratio"] = aspect_ratio
+        
+        if audio_name:
+            # 替换音频
+            workflow["712"]["inputs"]["audio"] = audio_name
+        else:
+            # 没有音频，直接连接采样输出的audio
+            workflow["649"]["inputs"]["audio"] = ["648", 0]
         
         # 图片处理
         first_frame = {
@@ -200,6 +216,7 @@ class VideoGeneratorComfyUILTX:
         prompt: str,
         reference_image_paths: Optional[List[str]] = None,
         *,
+        audio_path: Optional[str] = None,
         resolution: Literal["480p", "720p", "1080p"] = "720p",
         aspect_ratio: str = "16:9",
         fps: Literal[16, 24] = 24,
@@ -211,6 +228,7 @@ class VideoGeneratorComfyUILTX:
         Args:
             prompt: 视频描述文本（LTX 格式，英文+中文对话）
             reference_image_paths: 参考图片路径列表（兼容旧接口）
+            audio_path: 音频路径
             resolution: 视频分辨率
             aspect_ratio: 视频宽高比
             fps: 视频帧率
@@ -243,12 +261,17 @@ class VideoGeneratorComfyUILTX:
             rate_limiter=self.rate_limiter,
         )
         workflow = {}
+        audio_name = None
+        
+        if audio_path:
+            audio_name = await runner.upload_audio(audio_path)
         
         if len(reference_image_paths) > 4:
             logger.warning("Too many reference images, only the first 4 will be used")
             reference_image_paths = reference_image_paths[:4]
         
         len_reference_image_paths = len(reference_image_paths)
+        prompt = "语音使用标准普通话\n\n" + prompt
         
         if len_reference_image_paths >= 2:
             logger.info("============Using mutil frame workflow============")
@@ -260,6 +283,7 @@ class VideoGeneratorComfyUILTX:
                 aspect_ratio=aspect_ratio,
                 fps=fps,
                 duration=duration,
+                audio_name=audio_name,
             )
         else:
             logger.info("============Using first frame workflow============")
@@ -271,6 +295,7 @@ class VideoGeneratorComfyUILTX:
                 aspect_ratio=aspect_ratio,
                 fps=fps,
                 duration=duration,
+                audio_name=audio_name,
             )
 
         # 执行工作流
