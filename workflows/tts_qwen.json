@@ -1,0 +1,69 @@
+{
+  "49": {
+    "inputs": {
+      "audioUI": "",
+      "audio": [
+        "51",
+        1
+      ]
+    },
+    "class_type": "PreviewAudio",
+    "_meta": {
+      "title": "Preview Audio"
+    }
+  },
+  "51": {
+    "inputs": {
+      "filename": "旁白.wav"
+    },
+    "class_type": "FB_Qwen3TTSLoadSpeaker",
+    "_meta": {
+      "title": "🎙️ Qwen3-TTS LoadSpeaker"
+    }
+  },
+  "52": {
+    "inputs": {
+      "target_text": "今天我们要学习的汉字是： 月。月亮的月\n我们的月亮有时候是圆圆的，有时候是弯弯的，感觉跟月字长得也不像啊。\n小朋友们，让我们看看以前“月”字长什么样吧。\n商朝的时候，人类看着天空中弯弯的月亮，并把它画在了岩石上，它是长这个样子的。\n到了西周，它变得更圆润了",
+      "model_choice": "1.7B",
+      "device": "auto",
+      "precision": "bf16",
+      "language": "Chinese",
+      "ref_text": [
+        "51",
+        2
+      ],
+      "seed": 354999975505821,
+      "max_new_tokens": 4096,
+      "top_p": 0.8,
+      "top_k": 20,
+      "temperature": 1,
+      "repetition_penalty": 1.05,
+      "x_vector_only": false,
+      "attention": "auto",
+      "unload_model_after_generate": false,
+      "custom_model_path": "",
+      "voice_clone_prompt": [
+        "51",
+        0
+      ]
+    },
+    "class_type": "FB_Qwen3TTSVoiceClone",
+    "_meta": {
+      "title": "🎭 Qwen3-TTS VoiceClone"
+    }
+  },
+  "64": {
+    "inputs": {
+      "filename_prefix": "audio/ComfyUI",
+      "audioUI": "",
+      "audio": [
+        "52",
+        0
+      ]
+    },
+    "class_type": "SaveAudio",
+    "_meta": {
+      "title": "Save Audio (FLAC)"
+    }
+  }
+}

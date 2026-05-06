@@ -17,7 +17,7 @@
   },
   "269": {
     "inputs": {
-      "image": "first_frame (4).png"
+      "image": "first_frame_bak.png"
     },
     "class_type": "LoadImage",
     "_meta": {
@@ -26,7 +26,7 @@
   },
   "271": {
     "inputs": {
-      "noise_seed": 447220064771307
+      "noise_seed": 621908226385164
     },
     "class_type": "RandomNoise",
     "_meta": {
@@ -68,26 +68,6 @@
     "class_type": "SamplerCustomAdvanced",
     "_meta": {
       "title": "自定义采样器（高级）"
-    }
-  },
-  "278": {
-    "inputs": {
-      "positive": [
-        "298",
-        0
-      ],
-      "negative": [
-        "298",
-        1
-      ],
-      "latent": [
-        "301",
-        0
-      ]
-    },
-    "class_type": "LTXVCropGuides",
-    "_meta": {
-      "title": "LTXV裁剪指导"
     }
   },
   "279": {
@@ -149,7 +129,7 @@
   },
   "290": {
     "inputs": {
-      "strength": 1,
+      "strength": 0.7,
       "bypass": [
         "296",
         0
@@ -186,6 +166,19 @@
     "class_type": "LTXVAudioVAEDecode",
     "_meta": {
       "title": "LTXV音频VAE解码"
+    }
+  },
+  "292": {
+    "inputs": {
+      "expression": "a",
+      "values.a": [
+        "294",
+        0
+      ]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {
+      "title": "Math Expression"
     }
   },
   "294": {
@@ -225,7 +218,7 @@
   "298": {
     "inputs": {
       "frame_rate": [
-        "326",
+        "292",
         0
       ],
       "positive": [
@@ -249,7 +242,7 @@
         0
       ],
       "frame_rate": [
-        "326",
+        "292",
         1
       ],
       "batch_size": 1,
@@ -287,7 +280,7 @@
   "304": {
     "inputs": {
       "fps": [
-        "326",
+        "292",
         0
       ],
       "images": [
@@ -295,7 +288,7 @@
         0
       ],
       "audio": [
-        "291",
+        "336",
         0
       ]
     },
@@ -306,7 +299,7 @@
   },
   "307": {
     "inputs": {
-      "text": "pc game, console game, video game, cartoon, childish, ugly",
+      "text": "pc game, console game, video game, cartoon, childish, ugly, 奇怪字图案",
       "clip": [
         "311",
         0
@@ -345,8 +338,8 @@
       "temporal_size": 4096,
       "temporal_overlap": 4,
       "samples": [
-        "278",
-        2
+        "301",
+        0
       ],
       "vae": [
         "310",
@@ -396,7 +389,7 @@
   },
   "313": {
     "inputs": {
-      "value": "镜头从广角机位开始平稳向前缓慢推进，场景沉浸于轻柔的午后环境底噪之中。画面中，背对镜头的男孩身穿白色印花棉质 T 恤、深蓝色牛仔短裤及红色帆布鞋，随着他脚跟缓缓抬起完成踮脚动作，脚下木地板因受力发出极轻微的“咯吱”声。他双臂同步向上平稳举起，带起衣物与空气摩擦的细微声响，躯干随之微微后仰，最终定格在向上够取的姿态。阳光光影与书架背景保持静止，仅人物产生连贯的向上伸展位移，营造出静谧而真实的午后氛围。"
+      "value": "摄像机保持静态中近景固定机位。老者字博士带着慈爱神情，缓慢抬起左臂，宽大衣袖随之如花瓣般逐步展开，将内部书签缓缓向前递出。随着书签的发光强度由暗淡逐渐增强至明亮柔和，周围伴随发出沙沙的音效。老者视线始终稳定锁定画面左侧方向，嘴唇微微开合，温柔缓慢地轻声说道“别怕，小探险家。我是字博士，专门来陪你找汉字的秘密”。身穿白色印花 T 恤的幼童在画面左边缘保持静止。环境光线恒定，仅书签发光体带来局部高光变化。\n"
     },
     "class_type": "PrimitiveStringMultiline",
     "_meta": {
@@ -405,7 +398,7 @@
   },
   "314": {
     "inputs": {
-      "value": 5
+      "value": 6
     },
     "class_type": "easy int",
     "_meta": {
@@ -450,17 +443,124 @@
       "title": "图层工具：按宽高比缩放 V2"
     }
   },
-  "326": {
+  "318": {
     "inputs": {
-      "expression": "a",
-      "values.a": [
-        "294",
+      "audio": "shot6_00001_.flac",
+      "audioUI": "/api/view?filename=shot6_00001_.flac&type=input&subfolder=&rand=0.4305781368670748"
+    },
+    "class_type": "LoadAudio",
+    "_meta": {
+      "title": "加载音频"
+    }
+  },
+  "321": {
+    "inputs": {
+      "start_index": 0,
+      "duration": [
+        "322",
+        0
+      ],
+      "audio": [
+        "318",
         0
       ]
     },
-    "class_type": "ComfyMathExpression",
+    "class_type": "TrimAudioDuration",
     "_meta": {
-      "title": "Math Expression"
+      "title": "修剪音频时长"
+    }
+  },
+  "322": {
+    "inputs": {
+      "a": [
+        "314",
+        0
+      ]
+    },
+    "class_type": "CM_IntToFloat",
+    "_meta": {
+      "title": "IntToFloat"
+    }
+  },
+  "330": {
+    "inputs": {
+      "audioUI": "/api/view?filename=ComfyUI_temp_ntogc_00001_.flac&type=temp&subfolder=&rand=0.49278216287061505",
+      "audio": [
+        "291",
+        0
+      ]
+    },
+    "class_type": "PreviewAudio",
+    "_meta": {
+      "title": "预览音频"
+    }
+  },
+  "331": {
+    "inputs": {
+      "model_name": "MelBandRoformer_fp32.safetensors"
+    },
+    "class_type": "MelBandRoFormerModelLoader",
+    "_meta": {
+      "title": "Mel-Band RoFormer Model Loader"
+    }
+  },
+  "332": {
+    "inputs": {
+      "model": [
+        "331",
+        0
+      ],
+      "audio": [
+        "291",
+        0
+      ]
+    },
+    "class_type": "MelBandRoFormerSampler",
+    "_meta": {
+      "title": "Mel-Band RoFormer Sampler"
+    }
+  },
+  "334": {
+    "inputs": {
+      "audioUI": "/api/view?filename=ComfyUI_temp_ajfjv_00001_.flac&type=temp&subfolder=&rand=0.11748359337371606",
+      "audio": [
+        "332",
+        0
+      ]
+    },
+    "class_type": "PreviewAudio",
+    "_meta": {
+      "title": "预览音频"
+    }
+  },
+  "335": {
+    "inputs": {
+      "audioUI": "/api/view?filename=ComfyUI_temp_aqbwt_00001_.flac&type=temp&subfolder=&rand=0.19862057697406754",
+      "audio": [
+        "332",
+        1
+      ]
+    },
+    "class_type": "PreviewAudio",
+    "_meta": {
+      "title": "预览音频"
+    }
+  },
+  "336": {
+    "inputs": {
+      "merge_method": "add",
+      "audio1": [
+        "321",
+        0
+      ],
+      "audio2": [
+        "332",
+        1
+      ]
+    },
+    "class_type": "AudioMerge",
+    "_meta": {
+      "title": "音频合并"
     }
   }
 }
