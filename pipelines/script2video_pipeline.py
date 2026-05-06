@@ -33,6 +33,7 @@ class Script2VideoPipeline:
         audio_generator,
         working_dir: str,
         interrupt_step: str = None,
+        gacha_config: dict = None,
     ):
 
         self.chat_model = chat_model
@@ -54,6 +55,7 @@ class Script2VideoPipeline:
         self.working_dir = working_dir
         os.makedirs(self.working_dir, exist_ok=True)
         self.interrupt_step = interrupt_step
+        self.gacha_config = gacha_config
 
 
     @classmethod
@@ -151,98 +153,127 @@ class Script2VideoPipeline:
         
         if self.check_interrupt("camera_tree"):
             return
-
-        # 优先拍摄父相机？
-        # 基于机位生成对应镜头的首尾帧
-        priority_shot_idxs = [camera.parent_cam_idx for camera in camera_tree if camera.parent_cam_idx is not None]
-        tasks = [
-            self.generate_frames_for_single_camera(
-                camera=camera,
-                shot_descriptions=shot_descriptions,
-                characters=characters,
+        
+        if self.gacha_config and self.gacha_config["type"] != "video":
+            # 抽卡模式
+            shot_description = shot_descriptions[self.gacha_config["shot"]]
+            camera = camera_tree[shot_description.cam_idx]
+            first_shot_idx = camera.active_shot_idxs[0]
+            first_shot_ff_path = os.path.join(self.working_dir, "shots", f"{first_shot_idx}", "first_frame.png")
+            shot_idx = shot_description.idx
+            
+            print(f"🔍Gacha Mode:: Start generating {self.gacha_config['type']} for shot {shot_idx}...")
+            
+            await self.generate_frame_for_single_shot(
+                shot_idx=shot_idx, 
+                frame_type=self.gacha_config["type"], 
+                first_shot_ff_path_and_text_pair=(first_shot_ff_path, shot_descriptions[first_shot_idx].ff_desc),
+                frame_desc=shot_description.ff_desc if self.gacha_config["type"] == "first_frame" else shot_description.lf_desc,
+                visible_characters=[characters[idx] for idx in (shot_description.ff_vis_char_idxs if self.gacha_config["type"] == "first_frame" else shot_description.lf_vis_char_idxs)],
                 character_portraits_registry=character_portraits_registry,
-                priority_shot_idxs=priority_shot_idxs,
                 style=style,
             )
-            for camera in camera_tree
-        ]
-        await asyncio.gather(*tasks)
-        
+            return
+        else:
+            # 优先拍摄父相机？
+            # 基于机位生成对应镜头的首尾帧
+            priority_shot_idxs = [camera.parent_cam_idx for camera in camera_tree if camera.parent_cam_idx is not None]
+            tasks = [
+                self.generate_frames_for_single_camera(
+                    camera=camera,
+                    shot_descriptions=shot_descriptions,
+                    characters=characters,
+                    character_portraits_registry=character_portraits_registry,
+                    priority_shot_idxs=priority_shot_idxs,
+                    style=style,
+                )
+                for camera in camera_tree
+            ]
+            await asyncio.gather(*tasks)
+            
         if self.check_interrupt("camera_frame"):
             return
 
-        # 基于首尾帧生成镜头视频
-        video_tasks = [
-            self.generate_video_for_single_shot(
+        if self.gacha_config and self.gacha_config["type"] == "video":
+            # 抽卡模式
+            print(f"🔍Gacha Mode:: Start generating video for shot {self.gacha_config['shot']}...")
+            shot_description = shot_descriptions[self.gacha_config["shot"]]
+            await self.generate_video_for_single_shot(
                 shot_description=shot_description,
             )
-            for shot_description in shot_descriptions
-        ]
-        await asyncio.gather(*video_tasks)
-        
-        # 合并场景视频
-        final_video_path = os.path.join(self.working_dir, "final_video.mp4")
-        if os.path.exists(final_video_path):
-            print(f"🚀 Skipped concatenating videos, already exists.")
         else:
-            print(f"🎬 Starting concatenating videos...")
-            story_video_path = os.path.join(self.working_dir, "story_video.mp4")
-            
-            if os.path.exists(story_video_path):
-                print(f"🚀 Skipped concatenating story video, already exists.")
-            else:
-                print(f"🎬 Starting concatenating story video...")
-                video_clips = [
-                    VideoFileClip(os.path.join(self.working_dir, "shots", f"{shot_description.idx}", "video.mp4"), audio=True)
-                    for shot_description in shot_descriptions
-                ]
-                story_video = concatenate_videoclips(video_clips, method="compose")
-                story_video.write_videofile(story_video_path, codec="libx264", preset="medium", audio_codec="aac", fps=None, audio_bitrate="192k")
-                print(f"☑️ Concatenated story video, saved to {story_video_path}.")
-            
-            # 生成旁白
-            narration_audio_path = await self.generate_narration_audio(
-                script=script,
-                user_requirement=user_requirement,
-                storyboard=storyboard,
-            )
-            
-            # 合并视频和旁白
-            print(f"🎬 Starting merging video and narration...")
-            
-            # 使用 ffmpeg 混合视频和旁白音频
-            # 如果视频有原始音频（对话），将对话和旁白混合
-            # 否则直接添加旁白音频
-            # 首先检查视频是否有音频轨道
-            check_audio_cmd = [
-                "ffprobe", "-v", "error", "-select_streams", "a", 
-                "-show_entries", "stream=codec_type", 
-                "-of", "csv=p=0", story_video_path
+            # 基于首尾帧生成镜头视频
+            video_tasks = [
+                self.generate_video_for_single_shot(
+                    shot_description=shot_description,
+                )
+                for shot_description in shot_descriptions
             ]
-            has_audio = subprocess.run(check_audio_cmd, capture_output=True, text=True).stdout.strip()
+            await asyncio.gather(*video_tasks)
             
-            if has_audio:
-                # 视频有音频，混合对话和旁白
-                # 保持旁白和对话音量一致
-                subprocess.run([
-                    "ffmpeg", "-y", "-i", story_video_path, "-i", narration_audio_path,
-                    "-filter_complex", "[1:a]volume=1.0[narration];[0:a]volume=1.0[dialogue];[dialogue][narration]amix=inputs=2:duration=first[mixed];[mixed]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[out]",
-                    "-map", "0:v", "-map", "[out]",
-                    "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
-                    final_video_path
-                ], check=True, capture_output=True)
+            # 合并场景视频
+            final_video_path = os.path.join(self.working_dir, "final_video.mp4")
+            if os.path.exists(final_video_path):
+                print(f"🚀 Skipped concatenating videos, already exists.")
             else:
-                # 视频无音频，直接添加旁白
-                subprocess.run([
-                    "ffmpeg", "-y", "-i", story_video_path, "-i", narration_audio_path,
-                    "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
-                    "-shortest",
-                    final_video_path
-                ], check=True, capture_output=True)
-            
-            print(f"✅ Merged video and narration, saved to {final_video_path}.")
+                print(f"🎬 Starting concatenating videos...")
+                story_video_path = os.path.join(self.working_dir, "story_video.mp4")
+                
+                if os.path.exists(story_video_path):
+                    print(f"🚀 Skipped concatenating story video, already exists.")
+                else:
+                    print(f"🎬 Starting concatenating story video...")
+                    video_clips = [
+                        VideoFileClip(os.path.join(self.working_dir, "shots", f"{shot_description.idx}", "video.mp4"), audio=True)
+                        for shot_description in shot_descriptions
+                    ]
+                    story_video = concatenate_videoclips(video_clips, method="compose")
+                    story_video.write_videofile(story_video_path, codec="libx264", preset="medium", audio_codec="aac", fps=None, audio_bitrate="192k")
+                    print(f"☑️ Concatenated story video, saved to {story_video_path}.")
+                
+                # 生成旁白
+                narration_audio_path = await self.generate_narration_audio(
+                    script=script,
+                    user_requirement=user_requirement,
+                    storyboard=storyboard,
+                )
+                
+                # 合并视频和旁白
+                print(f"🎬 Starting merging video and narration...")
+                
+                # 使用 ffmpeg 混合视频和旁白音频
+                # 如果视频有原始音频（对话），将对话和旁白混合
+                # 否则直接添加旁白音频
+                # 首先检查视频是否有音频轨道
+                check_audio_cmd = [
+                    "ffprobe", "-v", "error", "-select_streams", "a", 
+                    "-show_entries", "stream=codec_type", 
+                    "-of", "csv=p=0", story_video_path
+                ]
+                has_audio = subprocess.run(check_audio_cmd, capture_output=True, text=True).stdout.strip()
+                
+                if has_audio:
+                    # 视频有音频，混合对话和旁白
+                    # 保持旁白和对话音量一致
+                    subprocess.run([
+                        "ffmpeg", "-y", "-i", story_video_path, "-i", narration_audio_path,
+                        "-filter_complex", "[1:a]volume=1.0[narration];[0:a]volume=1.0[dialogue];[dialogue][narration]amix=inputs=2:duration=first[mixed];[mixed]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[out]",
+                        "-map", "0:v", "-map", "[out]",
+                        "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
+                        final_video_path
+                    ], check=True, capture_output=True)
+                else:
+                    # 视频无音频，直接添加旁白
+                    subprocess.run([
+                        "ffmpeg", "-y", "-i", story_video_path, "-i", narration_audio_path,
+                        "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
+                        "-shortest",
+                        final_video_path
+                    ], check=True, capture_output=True)
+                
+                print(f"✅ Merged video and narration, saved to {final_video_path}.")
 
-        return final_video_path
+            return final_video_path
 
 
     async def generate_frames_for_single_camera(
@@ -382,14 +413,14 @@ class Script2VideoPipeline:
         for shot_idx in camera.active_shot_idxs[1:]:
             # 基于首镜头生成后续镜头首帧
             first_frame_task = self.generate_frame_for_single_shot(
-                    shot_idx=shot_idx, 
-                    frame_type="first_frame", 
-                    first_shot_ff_path_and_text_pair=(first_shot_ff_path, shot_descriptions[first_shot_idx].ff_desc),
-                    frame_desc=shot_descriptions[shot_idx].ff_desc,
-                    visible_characters=[characters[idx] for idx in shot_descriptions[shot_idx].ff_vis_char_idxs],
-                    character_portraits_registry=character_portraits_registry,
-                    style=style,
-                )
+                shot_idx=shot_idx, 
+                frame_type="first_frame", 
+                first_shot_ff_path_and_text_pair=(first_shot_ff_path, shot_descriptions[first_shot_idx].ff_desc),
+                frame_desc=shot_descriptions[shot_idx].ff_desc,
+                visible_characters=[characters[idx] for idx in shot_descriptions[shot_idx].ff_vis_char_idxs],
+                character_portraits_registry=character_portraits_registry,
+                style=style,
+            )
             if shot_idx in priority_shot_idxs:
                 priority_tasks.append(first_frame_task)
             else:

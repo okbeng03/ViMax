@@ -22,6 +22,9 @@ class Idea2VideoPipeline:
         audio_generator: str,
         working_dir: str,
         interrupt_step: str = None,
+        mode: str = "normal",
+        hanzi: str = None,
+        gacha_config: dict = None,
     ):
         self.chat_model = chat_model
         self.image_generator = image_generator
@@ -29,6 +32,9 @@ class Idea2VideoPipeline:
         self.audio_generator = audio_generator
         self.working_dir = working_dir
         self.interrupt_step = interrupt_step
+        self.mode = mode
+        self.hanzi = hanzi
+        self.gacha_config = gacha_config
         os.makedirs(self.working_dir, exist_ok=True)
 
         self.screenwriter = Screenwriter(chat_model=self.chat_model)
@@ -53,6 +59,9 @@ class Idea2VideoPipeline:
             audio_generator=backend.audio_generator,
             working_dir=config["working_dir"],
             interrupt_step=config["interrupt_step"],
+            mode=config["mode"],
+            hanzi=config["hanzi"],
+            gacha_config=config["gacha_config"],
         )
 
     async def extract_characters(
@@ -211,6 +220,12 @@ class Idea2VideoPipeline:
         user_requirement: str,
         style: str,
     ):
+        # 汉字模式
+        if self.mode == "hanzi":
+            # TODO:: 汉字模式
+            pass
+        
+        
         # 生成故事
         story = await self.develop_story(idea=idea, user_requirement=user_requirement)
         
@@ -241,11 +256,12 @@ class Idea2VideoPipeline:
 
         all_video_paths = []
 
-        # 生成场景视频，拆解成镜头再合成
-        for idx, scene_script in enumerate(scene_scripts):
-            scene_working_dir = os.path.join(self.working_dir, f"scene_{idx}")
-            os.makedirs(scene_working_dir, exist_ok=True)
-            print(f"🎬 Starting scene {idx} video generation...")
+        if self.mode == "gacha":
+            # 抽卡模式。只需要处理对应场景
+            scene_idx = self.gacha_config["scene"]
+            scene_script = scene_scripts[scene_idx]
+            scene_working_dir = os.path.join(self.working_dir, f"scene_{scene_idx}")
+            print(f"🎬 Gacha Mode:: Starting scene {scene_idx} video generation...")
             script2video_pipeline = Script2VideoPipeline(
                 chat_model=self.chat_model,
                 image_generator=self.image_generator,
@@ -253,29 +269,51 @@ class Idea2VideoPipeline:
                 audio_generator=self.audio_generator,
                 working_dir=scene_working_dir,
                 interrupt_step=self.interrupt_step,
+                gacha_config=self.gacha_config,
             )
-            final_video_path = await script2video_pipeline(
+            await script2video_pipeline(
                 script=scene_script,
                 user_requirement=user_requirement,
                 style=style,
                 characters=characters,
                 character_portraits_registry=character_portraits_registry,
             )
-            all_video_paths.append(final_video_path)
-            print(f"☑️ Completed scene {idx} video generation, saved to {final_video_path}.")
-
-        if self.interrupt_step is not None:
-            return
-        
-        # 合并所有场景视频
-        final_video_path = os.path.join(self.working_dir, "final_video.mp4")
-        if os.path.exists(final_video_path):
-            print(f"🚀 Skipped concatenating videos, already exists.")
         else:
-            print(f"🎬 Starting concatenating videos...")
-            video_clips = [VideoFileClip(final_video_path, audio=True)
-                           for final_video_path in all_video_paths]
-            final_video = concatenate_videoclips(video_clips, method="compose")
-            final_video.write_videofile(final_video_path, codec="libx264", preset="medium", audio_codec="aac", fps=None, audio_bitrate="192k")
-            print(f"☑️ Concatenated videos, saved to {final_video_path}.")
-        return final_video_path
+            # 生成场景视频，拆解成镜头再合成
+            for idx, scene_script in enumerate(scene_scripts):
+                scene_working_dir = os.path.join(self.working_dir, f"scene_{idx}")
+                os.makedirs(scene_working_dir, exist_ok=True)
+                print(f"🎬 Starting scene {idx} video generation...")
+                script2video_pipeline = Script2VideoPipeline(
+                    chat_model=self.chat_model,
+                    image_generator=self.image_generator,
+                    video_generator=self.video_generator,
+                    audio_generator=self.audio_generator,
+                    working_dir=scene_working_dir,
+                    interrupt_step=self.interrupt_step,
+                )
+                final_video_path = await script2video_pipeline(
+                    script=scene_script,
+                    user_requirement=user_requirement,
+                    style=style,
+                    characters=characters,
+                    character_portraits_registry=character_portraits_registry,
+                )
+                all_video_paths.append(final_video_path)
+                print(f"☑️ Completed scene {idx} video generation, saved to {final_video_path}.")
+
+            if self.interrupt_step is not None:
+                return
+            
+            # 合并所有场景视频
+            final_video_path = os.path.join(self.working_dir, "final_video.mp4")
+            if os.path.exists(final_video_path):
+                print(f"🚀 Skipped concatenating videos, already exists.")
+            else:
+                print(f"🎬 Starting concatenating videos...")
+                video_clips = [VideoFileClip(final_video_path, audio=True)
+                            for final_video_path in all_video_paths]
+                final_video = concatenate_videoclips(video_clips, method="compose")
+                final_video.write_videofile(final_video_path, codec="libx264", preset="medium", audio_codec="aac", fps=None, audio_bitrate="192k")
+                print(f"☑️ Concatenated videos, saved to {final_video_path}.")
+            return final_video_path

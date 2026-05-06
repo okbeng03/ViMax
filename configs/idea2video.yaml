@@ -60,6 +60,12 @@ audio_generator:
 working_dir: /Users/wangchangbin/ai/vimax_output6
 
 # 中断步骤
+## 汉字步骤
+# crawl 爬取数据
+# download 下载并转换字形图片
+# idea 生成创意
+# video 生成演变动画
+## 正常流程步骤
 # story 生成故事
 # character 提取角色特征
 # portrait 生成角色肖像
@@ -69,3 +75,20 @@ working_dir: /Users/wangchangbin/ai/vimax_output6
 # camera_tree 生成相机树
 # camera_frame 生成相机帧
 interrupt_step: null
+
+# 模式
+# normal 正常模式
+# hanzi 汉字
+# gacha 抽卡模式
+mode: normal
+
+gacha_config:
+  # 抽卡类型
+  # first_frame 首帧图片
+  # last_frame 尾帧图片
+  # video 视频
+  type: video
+  scene: 0
+  shot: 2
+
+hanzi: 日
