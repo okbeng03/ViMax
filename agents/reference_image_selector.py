@@ -243,7 +243,7 @@ class ReferenceImageSelector:
         config = resolve_chat_model_config(
             {
                 "model_provider": "qwen",
-                "model": "qwen3.5-plus",
+                "model": "deepseek-v4-pro",
             }
         )
         self.chat_model = init_chat_model(**config)
