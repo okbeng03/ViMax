@@ -154,26 +154,33 @@ class Script2VideoPipeline:
         if self.check_interrupt("camera_tree"):
             return
         
-        if self.gacha_config and self.gacha_config["type"] != "video":
+        if self.gacha_config:
             # 抽卡模式
-            shot_description = shot_descriptions[self.gacha_config["shot"]]
-            camera = camera_tree[shot_description.cam_idx]
-            first_shot_idx = camera.active_shot_idxs[0]
-            first_shot_ff_path = os.path.join(self.working_dir, "shots", f"{first_shot_idx}", "first_frame.png")
-            shot_idx = shot_description.idx
-            
-            print(f"🔍Gacha Mode:: Start generating {self.gacha_config['type']} for shot {shot_idx}...")
-            
-            await self.generate_frame_for_single_shot(
-                shot_idx=shot_idx, 
-                frame_type=self.gacha_config["type"], 
-                first_shot_ff_path_and_text_pair=(first_shot_ff_path, shot_descriptions[first_shot_idx].ff_desc),
-                frame_desc=shot_description.ff_desc if self.gacha_config["type"] == "first_frame" else shot_description.lf_desc,
-                visible_characters=[characters[idx] for idx in (shot_description.ff_vis_char_idxs if self.gacha_config["type"] == "first_frame" else shot_description.lf_vis_char_idxs)],
-                character_portraits_registry=character_portraits_registry,
-                style=style,
-            )
-            return
+            if self.gacha_config["type"] != "video":
+                shot_description = shot_descriptions[self.gacha_config["shot"]]
+                camera = camera_tree[shot_description.cam_idx]
+                first_shot_idx = camera.active_shot_idxs[0]
+                first_shot_ff_path = os.path.join(self.working_dir, "shots", f"{first_shot_idx}", "first_frame.png")
+                shot_idx = shot_description.idx
+                
+                print(f"🔍Gacha Mode:: Start generating {self.gacha_config['type']} for shot {shot_idx}...")
+                
+                await self.generate_frame_for_single_shot(
+                    shot_idx=shot_idx, 
+                    frame_type=self.gacha_config["type"], 
+                    first_shot_ff_path_and_text_pair=(first_shot_ff_path, shot_descriptions[first_shot_idx].ff_desc),
+                    frame_desc=shot_description.ff_desc if self.gacha_config["type"] == "first_frame" else shot_description.lf_desc,
+                    visible_characters=[characters[idx] for idx in (shot_description.ff_vis_char_idxs if self.gacha_config["type"] == "first_frame" else shot_description.lf_vis_char_idxs)],
+                    character_portraits_registry=character_portraits_registry,
+                    style=style,
+                )
+                return
+            else:
+                print(f"🔍Gacha Mode:: Start generating video for shot {self.gacha_config['shot']}...")
+                shot_description = shot_descriptions[self.gacha_config["shot"]]
+                await self.generate_video_for_single_shot(
+                    shot_description=shot_description,
+                )
         else:
             # 优先拍摄父相机？
             # 基于机位生成对应镜头的首尾帧
@@ -191,17 +198,9 @@ class Script2VideoPipeline:
             ]
             await asyncio.gather(*tasks)
             
-        if self.check_interrupt("camera_frame"):
-            return
+            if self.check_interrupt("camera_frame"):
+                return
 
-        if self.gacha_config and self.gacha_config["type"] == "video":
-            # 抽卡模式
-            print(f"🔍Gacha Mode:: Start generating video for shot {self.gacha_config['shot']}...")
-            shot_description = shot_descriptions[self.gacha_config["shot"]]
-            await self.generate_video_for_single_shot(
-                shot_description=shot_description,
-            )
-        else:
             # 基于首尾帧生成镜头视频
             video_tasks = [
                 self.generate_video_for_single_shot(
@@ -345,51 +344,51 @@ class Script2VideoPipeline:
 
 
             # 如果有父镜头，并且父镜头完全覆盖了子镜头；则直接使用切换场景作为首帧图；否则生成首帧图
-            if camera.parent_shot_idx is None or camera.missing_info is not None:
-                ff_selector_output_path = os.path.join(self.working_dir, "shots", f"{first_shot_idx}", "first_frame_selector_output.json")
-                if os.path.exists(ff_selector_output_path):
-                    with open(ff_selector_output_path, 'r', encoding='utf-8') as f:
-                        ff_selector_output = json.load(f)
-                    print(f"🚀 Loaded existing reference image selection and prompt for first_frame of shot {first_shot_idx} from {ff_selector_output_path}.")
-                else:
-                    print(f"🔍 Selecting reference images and generating prompt for first_frame of shot {first_shot_idx}...")
-                    # 基于镜头描述和参考图像，生成一个描述要创建的图像的文本提示符，指定生成的图像中的哪些元素应该引用哪个图像描述（以及其中的哪些元素）
-                    # 参考人物特征 + 前面帧，保证角色、环境、风格一致性
-                    # 这里只参考了人物肖像
-                    ff_selector_output = await self.reference_image_selector.select_reference_images_and_generate_prompt(
-                        available_image_path_and_text_pairs=available_image_path_and_text_pairs,
-                        frame_description=shot_descriptions[first_shot_idx].ff_desc,
-                        only_text_model=True,
-                    )
-                    with open(ff_selector_output_path, 'w', encoding='utf-8') as f:
-                        json.dump(ff_selector_output, f, ensure_ascii=False, indent=4)
-                    # ff_selector_output = None
-
-                    print(f"☑️ Selected reference images and generated prompt for first_frame of shot {first_shot_idx}, saved to {ff_selector_output_path}.")
-                
-                if not ff_selector_output:
-                    return
-
-                reference_image_path_and_text_pairs, prompt = ff_selector_output["reference_image_path_and_text_pairs"], ff_selector_output["text_prompt"]
-                prefix_prompt = f"style: {style}\n"
-                # for i, (image_path, text) in enumerate(reference_image_path_and_text_pairs):
-                #     prefix_prompt += f"Image {i}: {text}\n"
-                prompt = f"{prefix_prompt}\n{prompt}"
-                reference_image_paths = [item[0] for item in reference_image_path_and_text_pairs]
-
-                # 基于参考图片 + 描述生成图片
-                ff_image: ImageOutput = await self.image_generator.generate_single_image(
-                    prompt=prompt,
-                    reference_image_paths=reference_image_paths,
-                    size="2560x1440",
-                )
-                ff_image.save(first_shot_ff_path)
-                self.frame_events[first_shot_idx]["first_frame"].set()
-                print(f"☑️ Generated first_frame for shot {first_shot_idx}, saved to {first_shot_ff_path}.")
+            # if camera.parent_shot_idx is None or camera.missing_info is not None:
+            ff_selector_output_path = os.path.join(self.working_dir, "shots", f"{first_shot_idx}", "first_frame_selector_output.json")
+            if os.path.exists(ff_selector_output_path):
+                with open(ff_selector_output_path, 'r', encoding='utf-8') as f:
+                    ff_selector_output = json.load(f)
+                print(f"🚀 Loaded existing reference image selection and prompt for first_frame of shot {first_shot_idx} from {ff_selector_output_path}.")
             else:
-                shutil.copy(new_camera_image_path, first_shot_ff_path)
-                self.frame_events[first_shot_idx]["first_frame"].set()
-                print(f"☑️ Generated first_frame for shot {first_shot_idx}, saved to {first_shot_ff_path}. Parent shot fully covers the child shot, direct use.")
+                print(f"🔍 Selecting reference images and generating prompt for first_frame of shot {first_shot_idx}...")
+                # 基于镜头描述和参考图像，生成一个描述要创建的图像的文本提示符，指定生成的图像中的哪些元素应该引用哪个图像描述（以及其中的哪些元素）
+                # 参考人物特征 + 前面帧，保证角色、环境、风格一致性
+                # 这里只参考了人物肖像
+                ff_selector_output = await self.reference_image_selector.select_reference_images_and_generate_prompt(
+                    available_image_path_and_text_pairs=available_image_path_and_text_pairs,
+                    frame_description=shot_descriptions[first_shot_idx].ff_desc,
+                    only_text_model=True,
+                )
+                with open(ff_selector_output_path, 'w', encoding='utf-8') as f:
+                    json.dump(ff_selector_output, f, ensure_ascii=False, indent=4)
+                # ff_selector_output = None
+
+                print(f"☑️ Selected reference images and generated prompt for first_frame of shot {first_shot_idx}, saved to {ff_selector_output_path}.")
+            
+            if not ff_selector_output:
+                return
+
+            reference_image_path_and_text_pairs, prompt = ff_selector_output["reference_image_path_and_text_pairs"], ff_selector_output["text_prompt"]
+            prefix_prompt = f"style: {style}\n"
+            # for i, (image_path, text) in enumerate(reference_image_path_and_text_pairs):
+            #     prefix_prompt += f"Image {i}: {text}\n"
+            prompt = f"{prefix_prompt}\n{prompt}"
+            reference_image_paths = [item[0] for item in reference_image_path_and_text_pairs]
+
+            # 基于参考图片 + 描述生成图片
+            ff_image: ImageOutput = await self.image_generator.generate_single_image(
+                prompt=prompt,
+                reference_image_paths=reference_image_paths,
+                size="2560x1440",
+            )
+            ff_image.save(first_shot_ff_path)
+            self.frame_events[first_shot_idx]["first_frame"].set()
+            print(f"☑️ Generated first_frame for shot {first_shot_idx}, saved to {first_shot_ff_path}.")
+            # else:
+            #     shutil.copy(new_camera_image_path, first_shot_ff_path)
+            #     self.frame_events[first_shot_idx]["first_frame"].set()
+            #     print(f"☑️ Generated first_frame for shot {first_shot_idx}, saved to {first_shot_ff_path}. Parent shot fully covers the child shot, direct use.")
 
 
         # 2. generate the following frames of the camera
@@ -454,9 +453,10 @@ class Script2VideoPipeline:
         if os.path.exists(video_path):
             print(f"🚀 Skipped generating video for shot {shot_description.idx}, already exists.")
         else:
-            await self.frame_events[shot_description.idx]["first_frame"].wait()
-            if shot_description.variation_type in ["medium", "large"]:
-                await self.frame_events[shot_description.idx]["last_frame"].wait()
+            if not self.gacha_config:
+                await self.frame_events[shot_description.idx]["first_frame"].wait()
+                if shot_description.variation_type in ["medium", "large"]:
+                    await self.frame_events[shot_description.idx]["last_frame"].wait()
 
             frame_paths = []
             frame_paths.append(os.path.join(self.working_dir, "shots", f"{shot_description.idx}", "first_frame.png"))
@@ -582,6 +582,20 @@ class Script2VideoPipeline:
             #     prefix_prompt += f"Image {i}: {text}\n"
             prompt = f"{prefix_prompt}\n{prompt}"
             reference_image_paths = [item[0] for item in reference_image_path_and_text_pairs]
+            
+            # 检查 reference_image_paths，如果有引用非同一个 shot index 的首尾帧，则 wait
+            for reference_image_path in reference_image_paths:
+                frame_type = None
+                for ft in ["first_frame", "last_frame"]:
+                    if ft in reference_image_path:
+                        frame_type = ft
+                        break
+                if frame_type:
+                    parts = reference_image_path.split("/")
+                    shots_idx = parts.index("shots") if "shots" in parts else -1
+                    frame_index = int(parts[shots_idx + 1]) if shots_idx >= 0 else None
+                    if frame_index is not None and frame_index != shot_idx:
+                        await self.frame_events[frame_index][frame_type].wait()
 
             frame_image: ImageOutput = await self.image_generator.generate_single_image(
                 prompt=prompt,
@@ -925,10 +939,10 @@ class Script2VideoPipeline:
             #         prev_total_duration = sum([shot_item.shot_duration for shot_item in shot_items[:narration_item.idx]])
             #         narration_item.start_time = prev_total_duration + narration_item.start_time
             
-            # # 保存旁白描述
-            # narration_data = [item.model_dump() for item in narration_desc]
-            # with open(narration_desc_path, 'w', encoding='utf-8') as f:
-            #     json.dump(narration_data, f, ensure_ascii=False, indent=4)
+            # 保存旁白描述
+            narration_data = [item.model_dump() for item in narration_desc]
+            with open(narration_desc_path, 'w', encoding='utf-8') as f:
+                json.dump(narration_data, f, ensure_ascii=False, indent=4)
             
             print(f"✅ Generated narration description and saved to {narration_desc_path}.")
         
