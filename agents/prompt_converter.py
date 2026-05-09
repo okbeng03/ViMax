@@ -57,6 +57,7 @@ system_prompt_template_convert_dialogue = \
 - 要保持场景视觉描述的意思不发生改变
 - **确保最终场景描述融入音频（包含音效、对话、对话情绪）**
 - **音频融入要自然，位置要正确**: 确保融入正确的位置，不要一味的加在最后
+- 对话融入要保留标点符号，用“”括起来
 - 确保句子之间的逻辑流畅
 - **计算对话时长**：按对话语速 4.5 字/秒 （含自然停顿）来计算
 - 如果有多个对话，对话之间需有停顿，建议间隔0.5秒
@@ -111,7 +112,7 @@ class PromptConverter:
         config = resolve_chat_model_config(
             {
                 "model_provider": "qwen",
-                "model": "qwen3.5-plus",
+                "model": "deepseek-v4-pro",
             }
         )
         self.chat_model = init_chat_model(**config)
@@ -121,7 +122,7 @@ class PromptConverter:
         audio_desc: str,
         motion_desc: str = "",
         shot_duration: float = 5.0,
-        retry_timeout: int = 150,
+        retry_timeout: int = 300,
     ) -> ShotDescriptionWithDialogues:
         """
         转换 prompt 为 LTX 2.3 格式
