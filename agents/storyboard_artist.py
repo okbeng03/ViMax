@@ -393,7 +393,7 @@ class VisDescDecompositionResponse(BaseModel):
         ],
     )
     shot_duration: int = Field(
-        description="The duration of the shot in seconds. Maximum value is 8 seconds（include）.",
+        description="The duration of the shot in seconds. Minimum value is 5 seconds(include), Maximum value is 8 seconds（include）.",
     )
 
 
