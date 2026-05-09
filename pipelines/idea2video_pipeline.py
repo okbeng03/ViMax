@@ -2,6 +2,7 @@ import os
 import logging
 from agents import Screenwriter, CharacterExtractor, CharacterPortraitsGenerator
 from pipelines.script2video_pipeline import Script2VideoPipeline
+from pipelines.hanzi_pipeline import HanziPipeline
 from interfaces import CharacterInScene
 from typing import List, Dict, Optional
 import asyncio
@@ -24,6 +25,7 @@ class Idea2VideoPipeline:
         interrupt_step: str = None,
         mode: str = "normal",
         hanzi: str = None,
+        relate_hanzi: List[str] = None,
         gacha_config: dict = None,
     ):
         self.chat_model = chat_model
@@ -34,6 +36,7 @@ class Idea2VideoPipeline:
         self.interrupt_step = interrupt_step
         self.mode = mode
         self.hanzi = hanzi
+        self.relate_hanzi = relate_hanzi
         self.gacha_config = gacha_config
         os.makedirs(self.working_dir, exist_ok=True)
 
@@ -61,6 +64,7 @@ class Idea2VideoPipeline:
             interrupt_step=config["interrupt_step"],
             mode=config["mode"],
             hanzi=config["hanzi"],
+            relate_hanzi=config.get("relate_hanzi", "").split(",") if config.get("relate_hanzi") else None,
             gacha_config=config["gacha_config"],
         )
 
@@ -222,9 +226,30 @@ class Idea2VideoPipeline:
     ):
         # 汉字模式
         if self.mode == "hanzi":
-            # TODO:: 汉字模式
-            pass
-        
+            # 汉字模式
+            hanzi_working_dir = os.path.join(self.working_dir, "hanzi")
+            hanzi_pipeline = HanziPipeline(
+                chat_model=self.chat_model,
+                image_generator=self.image_generator,
+                video_generator=self.video_generator,
+                working_dir=hanzi_working_dir,
+                hanzi=self.hanzi,
+                relate_hanzi=self.relate_hanzi,
+                interrupt_step=self.interrupt_step,
+            )
+            hanzi_video_path = await hanzi_pipeline()
+            
+            # if not hanzi_video_path or not os.path.exists(hanzi_video_path):
+            #     print(f"❌ Hanzi pipeline failed to generate video.")
+            #     return
+            hanzi_idea_path = os.path.join(hanzi_working_dir, "idea.txt")
+
+            if os.path.exists(hanzi_idea_path):
+                with open(hanzi_idea_path, "r", encoding="utf-8") as f:
+                    idea = f.read()
+
+        if self.check_interrupt("hanzi"):
+            return
         
         # 生成故事
         story = await self.develop_story(idea=idea, user_requirement=user_requirement)

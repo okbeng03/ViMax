@@ -1,0 +1,37 @@
+chat_model:
+  init_args:
+    model: qwen3.6-plus
+    model_provider: qwen
+  # Rate limits for chat model API calls
+  # Set to null to disable rate limiting for this service
+  max_requests_per_minute: 500
+  max_requests_per_day: 2000
+
+image_generator:
+  class_path: tools.ImageGeneratorComfyUIFlux
+  init_args:
+    base_url: http://192.168.3.4:8188
+  # Rate limits for image generation API calls
+  # Set to null to disable rate limiting for this service
+  max_requests_per_minute: null
+  max_requests_per_day: null
+
+video_generator:
+  class_path: tools.VideoGeneratorComfyUILTX
+  init_args:
+    base_url: http://192.168.3.4:8188
+  # Rate limits for video generation API calls
+  # Set to null to disable rate limiting for this service
+  max_requests_per_minute: null
+  max_requests_per_day: null
+
+working_dir: /Users/wangchangbin/ai/vimax_output7
+
+hanzi: 日
+
+# 中断步骤
+# crawl 爬取数据
+# download 下载并转换字形图片
+# idea 生成创意
+# video 生成演变动画
+interrupt_step: camera_tree
