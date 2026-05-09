@@ -181,7 +181,7 @@
   },
   "75:71": {
     "inputs": {
-      "clip_name": "qwen_3_4b.safetensors",
+      "clip_name": "qwen_3_8b.safetensors",
       "type": "flux2",
       "device": "default"
     },
@@ -192,7 +192,7 @@
   },
   "75:72": {
     "inputs": {
-      "vae_name": "flux2-vae.safetensors"
+      "vae_name": "flux-2-klein-9b.safetensors"
     },
     "class_type": "VAELoader",
     "_meta": {

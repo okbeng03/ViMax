@@ -130,7 +130,7 @@
   },
   "607": {
     "inputs": {
-      "text": "text, words, letters, signature, watermark, logo, subtitles, captions, credits, typography, font, static text, scrolling text, date, time, timer, counter, framing, border, letterbox, black bars, overlay, graphical interface, UI, HUD, menu, low quality, worst quality, blurry, blurry image, blurry video, compression artifacts, glitch, static noise, noise, distorted, warped, bad anatomy, low resolution, overexposed, underexposed, flicker, unstable motion, ghosting, double exposure, drawing, cartoon, anime effects (the text version).",
+      "text": "text, subtitles, watermark, bad anatomy, camera drift, cartoon, still image, bad quality, subtitles, text, watermark, overlay effects,pc game, console game, video game, cartoon, childish, ugly,subtitles, caption, captions, closed captions, CC, on-screen text, text overlay, words, letters, characters, readable text, typography, subtitles bar, karaoke lyrics, lyric video, lower third, title card, UI, HUD, watermark, logo, signature, timestamp, sticker, banner, scrolling text, low quality, lowres, blurry, flicker, jitter, shaky camera, ghosting, frame doubling, temporal inconsistency, face warp, face melt, asymmetrical eyes, bad teeth, extra teeth, tongue artifact, mouth deformation, lip-sync mismatch, over-smoothing, plastic skin, heavy beauty filter, harsh sharpening, banding, noise, extra fingers, extra hands, 字幕, text, Subtitles",
       "clip": [
         "606",
         0
