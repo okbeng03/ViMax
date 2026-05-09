@@ -32,12 +32,15 @@ PROVIDER_PRESETS: Dict[str, Dict[str, Any]] = {
     "qwen": {
         "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
         "env_key": "DASHSCOPE_API_KEY",
-        "default_model": "qwen3.6-plus",
+        "default_model": "qwen3.6-max-preview",
         "models": [
             "qwen3.6-plus",
+            "qwen3.6-max-preview",
             "qwen-flash-2025-07-28",
             "qwen3.5-plus",
-            "qwen3-max"
+            "qwen3-max",
+            "qwen-vl-max",
+            "deepseek-v4-pro",
         ],
         "temperature_range": (0.0, 1.0),
     },
