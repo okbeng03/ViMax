@@ -272,6 +272,10 @@ class ComfyUIWorkflowRunner:
                 queue.task_done()
                 logger.info("工作流执行完成")
                 
+                # 等待30秒，保证ComfyUI环境释放
+                logger.info("等待30秒后开始下一个任务...")
+                await asyncio.sleep(30)
+                
             except asyncio.TimeoutError:
                 # 没有新任务，继续循环检查是否应该退出
                 continue
