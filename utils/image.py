@@ -61,6 +61,29 @@ def save_base64_image(b64_string, save_path):
 # 百炼图片上传
 dashscope_api_key = os.getenv("DASHSCOPE_API_KEY")
 
+# 凭证缓存（复用凭证避免限流，凭证有效期约5分钟）
+_policy_cache: dict = {}
+
+def get_cached_policy(model_name):
+    """获取缓存的凭证，凭证有效期约5分钟"""
+    import time
+    
+    cache_key = model_name
+    if cache_key in _policy_cache:
+        cached = _policy_cache[cache_key]
+        # 4分钟内复用凭证，预留1分钟安全时间
+        if time.time() - cached['timestamp'] < 240:
+            # logging.info(f"复用缓存的上传凭证 for {model_name}")
+            return cached['policy_data']
+    
+    # 获取新凭证
+    policy_data = get_upload_policy(model_name)
+    _policy_cache[cache_key] = {
+        'policy_data': policy_data,
+        'timestamp': time.time()
+    }
+    return policy_data
+
 def get_upload_policy(model_name):
     """获取文件上传凭证"""
 
@@ -105,10 +128,10 @@ def upload_file_to_oss(policy_data, file_path):
     return f"oss://{key}"
 
 def upload_file_and_get_url(model_name, file_path):
-    """上传文件并获取URL"""
+    """上传文件并获取URL（自动复用凭证）"""
 
-    # 1. 获取上传凭证，上传凭证接口有限流，超出限流将导致请求失败
-    policy_data = get_upload_policy(model_name) 
+    # 1. 获取缓存的凭证（自动复用，凭证有效期约5分钟）
+    policy_data = get_cached_policy(model_name)
     # 2. 上传文件到OSS
     oss_url = upload_file_to_oss(policy_data, file_path)
     
