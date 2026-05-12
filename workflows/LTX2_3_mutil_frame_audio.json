@@ -106,9 +106,9 @@
   "605": {
     "inputs": {
       "lora_name": "ltx2.3-transition.safetensors",
-      "strength_model": 1,
+      "strength_model": 0.6,
       "model": [
-        "610",
+        "725",
         0
       ]
     },
@@ -130,7 +130,7 @@
   },
   "607": {
     "inputs": {
-      "text": "text, subtitles, watermark, bad anatomy, camera drift, cartoon, still image, bad quality, subtitles, text, watermark, overlay effects,pc game, console game, video game, cartoon, childish, ugly,subtitles, caption, captions, closed captions, CC, on-screen text, text overlay, words, letters, characters, readable text, typography, subtitles bar, karaoke lyrics, lyric video, lower third, title card, UI, HUD, watermark, logo, signature, timestamp, sticker, banner, scrolling text, low quality, lowres, blurry, flicker, jitter, shaky camera, ghosting, frame doubling, temporal inconsistency, face warp, face melt, asymmetrical eyes, bad teeth, extra teeth, tongue artifact, mouth deformation, lip-sync mismatch, over-smoothing, plastic skin, heavy beauty filter, harsh sharpening, banding, noise, extra fingers, extra hands, 字幕, text, Subtitles",
+      "text": "text, words, letters, signature, watermark, logo, subtitles, captions, credits, typography, font, static text, scrolling text, date, time, timer, counter, framing, border, letterbox, black bars, overlay, graphical interface, UI, HUD, menu, low quality, worst quality, blurry, blurry image, blurry video, compression artifacts, glitch, static noise, noise, distorted, warped, bad anatomy, low resolution, overexposed, underexposed, flicker, unstable motion, ghosting, double exposure, drawing, cartoon, anime effects (the text version).",
       "clip": [
         "606",
         0
@@ -316,7 +316,7 @@
   },
   "636": {
     "inputs": {
-      "noise_seed": 366906830318380
+      "noise_seed": 976227606856257
     },
     "class_type": "RandomNoise",
     "_meta": {
@@ -514,7 +514,7 @@
   },
   "672": {
     "inputs": {
-      "text": "固定机位 eye-level 侧拍镜头下，左侧身着宽袖米黄色宣纸长袍、佩戴黑色圆框眼镜的矮小老者抬起右手打了一个响指，响指声“啪”清脆响起。伴随动作，中间上方悬浮的发光“日”字瞬间崩解为无数金色光点，伴随着光点重组的“嗖嗖”声，光点迅速向下流动并在半空中重组为一道弯弯的发光弧线“月”字。此时音乐节奏转为轻快活泼，右侧身穿白色印花 T 恤、深蓝短裤与红色帆布鞋的圆润男孩目光被上方光影变化吸引，双腿骤然发力跳起，双脚重重踏在地毯上站稳，面部与躯干完全朝向左侧老者的方向，整个过程光影流动自然，人物动作与物体形变连贯衔接。\n",
+      "text": "微俯视固定机位，中近景，无推拉摇移。\n\n五岁男孩始终保持下蹲姿势，双脚未移动，膝盖弯曲，没有站立。\n\n男孩右手握着枯树枝，树枝尖端持续贴紧泥土地面。右手拖动树枝，在泥地上缓慢画出一个完整清晰的圆形轨迹，泥土被划开形成明显圆圈痕迹，伴随树枝摩擦泥土的“唰唰”声与轻微风声。\n\n画圆完成后，男孩依然保持下蹲，仅通过腰腹力量将上半身缓慢抬起，但双腿始终保持弯曲下蹲，没有站起。\n\n随着上半身抬起，男孩将右手中的树枝从泥地抽离，高举到身体右上方。左手自然松开辅助动作。\n\n男孩兴奋地看向右侧，高兴地喊道：“亮亮的！圆圆的！”\n\n镜头焦点开始位于泥地圆圈与树枝接触点，随后平滑转移至男孩面部与高举树枝的右手。",
       "clip": [
         "606",
         0
@@ -593,7 +593,7 @@
   },
   "686": {
     "inputs": {
-      "image": "last_frame_bak.png"
+      "image": "last_frame (5).png"
     },
     "class_type": "LoadImage",
     "_meta": {
@@ -641,7 +641,7 @@
   },
   "699": {
     "inputs": {
-      "image": "first_frame_bak (3).png"
+      "image": "first_frame (8).png"
     },
     "class_type": "LoadImage",
     "_meta": {
@@ -671,8 +671,8 @@
   },
   "712": {
     "inputs": {
-      "audio": "shot6_00001_.flac",
-      "audioUI": "/api/view?filename=shot6_00001_.flac&type=input&subfolder=&rand=0.4656769750384059"
+      "audio": "final_dialogues.flac",
+      "audioUI": "/api/view?filename=final_dialogues.flac&type=input&subfolder=&rand=0.6719359848543879"
     },
     "class_type": "LoadAudio",
     "_meta": {
@@ -748,6 +748,20 @@
     "class_type": "CM_IntToFloat",
     "_meta": {
       "title": "IntToFloat"
+    }
+  },
+  "725": {
+    "inputs": {
+      "lora_name": "仙侠风格.safetensors",
+      "strength_model": 1,
+      "model": [
+        "610",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "LoRA加载器（仅模型）"
     }
   }
 }

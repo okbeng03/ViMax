@@ -4,7 +4,6 @@
       "filename_prefix": "video/LTX_2.3_i2v",
       "format": "auto",
       "codec": "auto",
-      "video-preview": "",
       "video": [
         "304",
         0
@@ -297,9 +296,18 @@
       "title": "创建视频"
     }
   },
+  "305": {
+    "inputs": {
+      "model_name": "ltx-2.3-spatial-upscaler-x2-1.1.safetensors"
+    },
+    "class_type": "LatentUpscaleModelLoader",
+    "_meta": {
+      "title": "加载Latent放大模型"
+    }
+  },
   "307": {
     "inputs": {
-      "text": "text, subtitles, watermark, bad anatomy, camera drift, cartoon, still image, bad quality, subtitles, text, watermark, overlay effects,pc game, console game, video game, cartoon, childish, ugly,subtitles, caption, captions, closed captions, CC, on-screen text, text overlay, words, letters, characters, readable text, typography, subtitles bar, karaoke lyrics, lyric video, lower third, title card, UI, HUD, watermark, logo, signature, timestamp, sticker, banner, scrolling text, low quality, lowres, blurry, flicker, jitter, shaky camera, ghosting, frame doubling, temporal inconsistency, face warp, face melt, asymmetrical eyes, bad teeth, extra teeth, tongue artifact, mouth deformation, lip-sync mismatch, over-smoothing, plastic skin, heavy beauty filter, harsh sharpening, banding, noise, extra fingers, extra hands, 字幕, text, Subtitles",
+      "text": "pc game, console game, video game, cartoon, childish, ugly, 奇怪字图案",
       "clip": [
         "311",
         0
@@ -314,7 +322,7 @@
     "inputs": {
       "cfg": 1,
       "model": [
-        "279",
+        "338",
         0
       ],
       "positive": [
@@ -446,7 +454,7 @@
   "318": {
     "inputs": {
       "audio": "shot6_00001_.flac",
-      "audioUI": "/api/view?filename=shot6_00001_.flac&type=input&subfolder=&rand=0.4305781368670748"
+      "audioUI": "/api/view?filename=shot6_00001_.flac&type=input&subfolder=&rand=0.8078360814070585"
     },
     "class_type": "LoadAudio",
     "_meta": {
@@ -484,7 +492,7 @@
   },
   "330": {
     "inputs": {
-      "audioUI": "/api/view?filename=ComfyUI_temp_ntogc_00001_.flac&type=temp&subfolder=&rand=0.49278216287061505",
+      "audioUI": "",
       "audio": [
         "291",
         0
@@ -522,7 +530,7 @@
   },
   "334": {
     "inputs": {
-      "audioUI": "/api/view?filename=ComfyUI_temp_ajfjv_00001_.flac&type=temp&subfolder=&rand=0.11748359337371606",
+      "audioUI": "",
       "audio": [
         "332",
         0
@@ -535,7 +543,7 @@
   },
   "335": {
     "inputs": {
-      "audioUI": "/api/view?filename=ComfyUI_temp_aqbwt_00001_.flac&type=temp&subfolder=&rand=0.19862057697406754",
+      "audioUI": "",
       "audio": [
         "332",
         1
@@ -561,6 +569,34 @@
     "class_type": "AudioMerge",
     "_meta": {
       "title": "音频合并"
+    }
+  },
+  "337": {
+    "inputs": {
+      "lora_name": "仙侠风格.safetensors",
+      "strength_model": 1,
+      "model": [
+        "279",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "LoRA加载器（仅模型）"
+    }
+  },
+  "338": {
+    "inputs": {
+      "lora_name": "ltx2.3-transition.safetensors",
+      "strength_model": 0.6,
+      "model": [
+        "337",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "LoRA加载器（仅模型）"
     }
   }
 }
