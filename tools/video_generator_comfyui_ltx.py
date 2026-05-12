@@ -114,6 +114,10 @@ class VideoGeneratorComfyUILTX:
         workflow["314"]["inputs"]["value"] = duration
         workflow["316"]["inputs"]["aspect_ratio"] = aspect_ratio
         
+        # 如果是生成场景切换视频，因为缺少角色参考，会生成仙侠风任务。去掉该lora
+        if prompt.startswith("Two shots. The transition between the shots is a cut to. The style of the two shots should be consistent."):
+            workflow["338"]["inputs"]["model"] = ["279", 0]
+        
         if audio_name:
             # 替换音频
             workflow["318"]["inputs"]["audio"] = audio_name
@@ -271,7 +275,6 @@ class VideoGeneratorComfyUILTX:
             reference_image_paths = reference_image_paths[:4]
         
         len_reference_image_paths = len(reference_image_paths)
-        prompt = "语音使用标准普通话\n\n" + prompt
         
         if len_reference_image_paths >= 2:
             logger.info("============Using mutil frame workflow============")
@@ -303,7 +306,7 @@ class VideoGeneratorComfyUILTX:
             workflow_path=mutil_frame_workflow_path if len_reference_image_paths >= 2 else first_frame_workflow_path,
             workflow=workflow,
             output_node_ids=mutil_frame_output_node_ids if len_reference_image_paths >= 2 else first_frame_output_node_ids,
-            timeout=60 * 10,  # 10 分钟超时
+            # timeout=60 * 10,  # 10 分钟超时
         )
         
         # 提取输出路径
