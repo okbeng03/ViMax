@@ -15,6 +15,7 @@ import logging
 import re
 import yaml
 import shutil
+import subprocess
 import cairosvg
 from typing import Any, List
 from PIL import Image
@@ -27,6 +28,7 @@ from bs4 import BeautifulSoup
 from langchain.chat_models.base import BaseChatModel
 
 from utils.image import download_image
+from utils.audio import download_audio
 from utils.provider_presets import resolve_chat_model_config
 from agents.hanzi_creative_agent import HanziCreativeAgent
 from agents.hanzi_evolution_agent import HanziEvolutionAgent, EvolutionTransitions
@@ -37,6 +39,19 @@ glyph_type_descriptions = {
     "甲骨文": "如果未明确，泛指古人的汉字",
     "楷书": "如果未明确，泛指现在的汉字"
 }
+assets_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets")
+
+def _ensure_url_protocol(url: str) -> str:
+    """
+    确保 URL 包含 http 协议。
+    如果 URL 以 // 开头（无协议），自动添加 http://
+    """
+    if not url:
+        return url
+    if url.startswith("//"):
+        return "https:" + url
+    return url
+
 
 class HanziPipeline:
     def __init__(
@@ -44,6 +59,7 @@ class HanziPipeline:
         chat_model: BaseChatModel,
         image_generator: Any,
         video_generator: Any,
+        audio_generator: Any,
         working_dir: str,
         hanzi: str,
         relate_hanzi: List[str] | None = None,
@@ -52,12 +68,15 @@ class HanziPipeline:
         self.chat_model: BaseChatModel = chat_model
         self.image_generator: Any = image_generator
         self.video_generator: Any = video_generator
+        self.audio_generator: Any = audio_generator
         self.working_dir: str = working_dir
         self.hanzi: str = hanzi
         self.relate_hanzi: List[str] | None = relate_hanzi
         self.interrupt_step: str | None = interrupt_step
         
         os.makedirs(self.working_dir, exist_ok=True)
+        self.temp_dir = os.path.join(self.working_dir, "temp")
+        os.makedirs(self.temp_dir, exist_ok=True)
         # os.makedirs(os.path.join(self.working_dir, "character_portraits"), exist_ok=True)
         
         # 初始化 agents
@@ -80,6 +99,7 @@ class HanziPipeline:
             chat_model=chat_model,
             image_generator=backend.image_generator,
             video_generator=backend.video_generator,
+            audio_generator=backend.audio_generator,
             working_dir=config.get("working_dir", f"./output/hanzi_{hanzi}"),
             hanzi=hanzi,
             interrupt_step=config.get("interrupt_step"),
@@ -105,7 +125,8 @@ class HanziPipeline:
             
         if not working_dir:
             working_dir = self.working_dir
-            
+        
+        is_self = self.hanzi == hanzi
         save_path = os.path.join(working_dir, "hanzi_info.json")
         
         if os.path.exists(save_path):
@@ -131,7 +152,7 @@ class HanziPipeline:
             soup = BeautifulSoup(response.text, 'html.parser')
             
             # 提取基础解释
-            basic_definitions = self._extract_basic_explanation(soup)
+            basic_definitions = self._extract_basic_explanation(soup, is_self)
             
             # 提取字源字形
             glyphs = self._extract_glyphs(soup)
@@ -143,18 +164,32 @@ class HanziPipeline:
                 "source_url": url,
             }
             
-            with open(save_path, "w", encoding="utf-8") as f:
-                json.dump(hanzi_info, f, ensure_ascii=False, indent=4)
+            if is_self:
+                with open(save_path, "w", encoding="utf-8") as f:
+                    json.dump(hanzi_info, f, ensure_ascii=False, indent=4)
             
-            print(f"✅ Crawled {hanzi} info and saved to {save_path}")
+                print(f"✅ Crawled {hanzi} info and saved to {save_path}")
+
             return hanzi_info
             
         except Exception as e:
             logger.error(f"Failed to crawl hanzi info: {e}")
             raise
 
-    def _extract_basic_explanation(self, soup: BeautifulSoup) -> str:
+    def _extract_basic_explanation(self, soup: BeautifulSoup, is_self: bool = False) -> str:
         """提取基础解释"""
+        
+        if is_self:
+            brush_stroke_path = os.path.join(self.working_dir, "brush_stroke.gif")
+            
+            if os.path.exists(brush_stroke_path):
+                logger.info(f"Brush stroke image already exists: {brush_stroke_path}")
+            else:
+                # 下载笔画 gif。img id="bhbs"
+                brush_stroke_img = soup.find('img', id='bhbs')
+                if brush_stroke_img:
+                    brush_stroke_url = _ensure_url_protocol(brush_stroke_img["data-gif"])
+                    download_image(brush_stroke_url, brush_stroke_path)
 
         definitions = []
         
@@ -167,6 +202,28 @@ class HanziPipeline:
                 ols = definitions_div.select('ol')
                 for idx, ol in enumerate(ols):
                     pinyin = pinyins[idx].contents[0].strip()
+                    audio_path = None
+                    
+                    if is_self:
+                        # 下载拼音音频
+                        temp_audio_path = os.path.join(self.working_dir, f"{pinyin}.mp3")
+                        audio_path = temp_audio_path.replace(".mp3", ".flac")
+                        if not os.path.exists(audio_path):
+                            # 音频url在 a.audio_play_button data-src-mp3属性里
+                            audio_url = _ensure_url_protocol(pinyins[idx].find('a', class_='audio_play_button')['data-src-mp3'])
+                        
+                            if audio_url:
+                                download_audio(audio_url, temp_audio_path)
+                                subprocess.run(["ffmpeg", "-y", "-i", temp_audio_path,
+                                                "-ar", "44100",
+                                                "-ac", "2",
+                                                "-sample_fmt", "s16",
+                                                "-c:a", "flac",
+                                                audio_path], check=True)
+                                subprocess.run(["ffprobe", audio_path], check=True)
+                            else:
+                                audio_path = None
+                    
                     explanations = []
                     for li in ol.find_all('li'):
                         text = li.get_text(strip=True)
@@ -175,6 +232,7 @@ class HanziPipeline:
                             
                     definitions.append({
                         "pinyin": pinyin,
+                        "audio_path": audio_path or "",
                         "explanations": explanations,
                     })
         
@@ -315,7 +373,7 @@ class HanziPipeline:
             # 下载 SVG
             if not os.path.exists(svg_path):
                 try:
-                    download_image(svg_url, svg_path)
+                    download_image(_ensure_url_protocol(svg_url), svg_path)
                     print(f"✅ Downloaded {glyph_type} SVG from {svg_url}")
                 except Exception as e:
                     logger.warning(f"Failed to download SVG for {glyph_type}: {e}")
@@ -340,7 +398,6 @@ class HanziPipeline:
             png_path: 输出 PNG 文件路径
             size: 输出图片尺寸
         """
-        import subprocess
         
         # 临时文件路径（用于 cairosvg 转换）
         temp_png_path = png_path + ".temp.png"
@@ -351,7 +408,8 @@ class HanziPipeline:
                 url=svg_path,
                 write_to=temp_png_path,
                 output_width=size,
-                output_height=size
+                output_height=size,
+                background_color=None
             )
         except ImportError:
             logger.warning("cairosvg not installed, trying alternative method...")
@@ -367,32 +425,65 @@ class HanziPipeline:
                 raise
         
         # 将透明底黑色字转换为白底黑色字
-        self._convert_transparent_black_to_white_bg(temp_png_path, png_path)
+        # self._convert_transparent_black_to_white_bg(temp_png_path, png_path)
+        # 将透明底黑字添加到米字格上
+        mi_path = os.path.join(assets_dir, "mi.png")
+        
+        if os.path.exists(mi_path):
+            # 打开米字格背景和透明底黑字
+            mi_bg = Image.open(mi_path).convert("RGBA")
+            char_img = Image.open(temp_png_path).convert("RGBA")
+            
+            # 将米字格缩放到目标尺寸 size x size
+            mi_bg = mi_bg.resize((size, size), Image.Resampling.LANCZOS)
+            
+            # 缩放字符图片以适应米字格（保留一定边距，约占80%）
+            char_resized = char_img.resize(
+                (size, size), 
+                Image.Resampling.LANCZOS
+            )
+            
+            # 计算居中偏移
+            x_offset = (size - char_resized.size[0]) // 2
+            y_offset = (size - char_resized.size[1]) // 2
+            
+            # 将字符叠加到米字格上
+            mi_bg.paste(char_resized, (x_offset, y_offset), mask=char_resized.split()[3])
+            
+            # 保存结果（转换为 RGB 去掉透明通道）
+            mi_bg.convert("RGB").save(png_path, "PNG")
+            print(f"✅ Added character to mi-grid background: {png_path}")
+        else:
+            # 米字格不存在，直接移动临时文件
+            shutil.move(temp_png_path, png_path)
         
         # 清理临时文件
         if os.path.exists(temp_png_path):
             os.remove(temp_png_path)
     
-    def _convert_transparent_black_to_white_bg(self, input_path: str, output_path: str):
-        """
-        将透明底黑色字转换为白底黑色字
+    # def _convert_transparent_black_to_white_bg(self, input_path: str, output_path: str):
+    #     """
+    #     将透明底黑色字转换为白底黑色字
         
-        Args:
-            input_path: 输入图片路径（RGBA，可能有透明背景和黑色文字）
-            output_path: 输出图片路径（RGB，白底黑字）
-        """
-        # 打开图片并转换为 RGBA
-        img = Image.open(input_path).convert("RGBA")
+    #     Args:
+    #         input_path: 输入图片路径（RGBA，可能有透明背景和黑色文字）
+    #         output_path: 输出图片路径（RGB，白底黑字）
+    #     """
+    #     # 打开图片并转换为 RGBA
+    #     img = Image.open(input_path).convert("RGBA")
         
-        # 创建白色背景
-        white_bg = Image.new("RGB", img.size, (255, 255, 255))
+    #     # 创建白色背景
+    #     white_bg = Image.new("RGB", img.size, (255, 255, 255))
         
-        # 将原图作为蒙版粘贴到白色背景上（保留黑色文字区域）
-        white_bg.paste(img, mask=img.split()[3])  # 使用 alpha 通道作为蒙版
+    #     # 将原图作为蒙版粘贴到白色背景上（保留黑色文字区域）
+    #     white_bg.paste(img, mask=img.split()[3])  # 使用 alpha 通道作为蒙版
         
-        # 保存为 PNG
-        white_bg.save(output_path, "PNG")
-        print(f"✅ Converted to white background: {output_path}")
+    #     # 图片放大到 980 * 980
+    #     white_bg = white_bg.resize((980, 980), Image.Resampling.LANCZOS)
+
+    #     # 保存为 PNG
+    #     white_bg.save(output_path, "PNG")
+    #     print(f"✅ Converted to white background: {output_path}")
 
     async def generate_creative_idea(self, hanzi_info: dict[str, Any]) -> str:
         """
@@ -517,31 +608,36 @@ class HanziPipeline:
             from_hanzi_path = glyph_png_paths[from_type]
             to_hanzi_path = glyph_png_paths[to_type]
             
-            # 合成带背景的图片路径
-            from_composite_path = os.path.join(evolution_dir, f"{from_type}_composite.png")
-            to_composite_path = os.path.join(evolution_dir, f"{to_type}_composite.png")
-            composite_prompt = "生成一个高质量的合成图片：将Image 0的黑色汉字颜色换成白色粉笔字放在左侧米字格中，书写工整，上下垂直居中。\n黑板背景、左侧米字格子、整体构图、右侧文字参考 Image 1。右下角的小字去掉。\n左侧米字格子中的汉字参考 Image 0，换色白色粉笔颜色。"
+            # # 合成带背景的图片路径
+            # from_composite_path = os.path.join(evolution_dir, f"{from_type}_composite.png")
+            # to_composite_path = os.path.join(evolution_dir, f"{to_type}_composite.png")
+            # composite_prompt = "生成一个高质量的合成图片：将image2的黑色字符颜色调整为白色粉笔色，放在左侧米字格中（不要增减笔画），书写工整，大小合适，上下垂直居中。\nimage1右下角的小字去掉。"
             
-            # 如果合成图片已存在，跳过生成
-            if not os.path.exists(from_composite_path):
-                bg_path = os.path.join(assets_dir, f"{from_type}.png")
-                from_image = await self.image_generator.generate_single_image(
-                    prompt=composite_prompt,
-                    reference_image_paths=[from_hanzi_path, bg_path],
-                    size="2560x1440",
-                )
-                from_image.save(from_composite_path)
-                print(f"✅ Generated composite image for {from_type}")
+            # # 如果合成图片已存在，跳过生成
+            # if not os.path.exists(from_composite_path):
+            #     bg_path = os.path.join(assets_dir, f"{from_type}.png")
+            #     from_image = await self.image_generator.generate_single_image(
+            #         prompt=composite_prompt,
+            #         reference_image_paths=[bg_path, from_hanzi_path],
+            #         size="2560x1440",
+            #         workflow_name="qwen_edit",
+            #     )
+            #     from_image.save(from_composite_path)
+            #     print(f"✅ Generated composite image for {from_type}")
             
-            if not os.path.exists(to_composite_path):
-                bg_path = os.path.join(assets_dir, f"{from_type}.png")
-                to_image = await self.image_generator.generate_single_image(
-                    prompt=composite_prompt,
-                    reference_image_paths=[to_hanzi_path, bg_path],
-                    size="2560x1440",
-                )
-                to_image.save(to_composite_path)
-                print(f"✅ Generated composite image for {to_type}")
+            # if not os.path.exists(to_composite_path):
+            #     if to_type == "楷书":
+            #         composite_prompt = f"生成一个高质量的合成图片：将image2的黑色{self.hanzi}字颜色调整为白色粉笔色，放在左侧米字格中（不要增减笔画），书写工整，大小合适，上下垂直居中。\nimage1右下角的小字去掉。"
+                
+            #     bg_path = os.path.join(assets_dir, f"{to_type}.png")
+            #     to_image = await self.image_generator.generate_single_image(
+            #         prompt=composite_prompt,
+            #         reference_image_paths=[bg_path, to_hanzi_path],
+            #         size="2560x1440",
+            #         workflow_name="qwen_edit",
+            #     )
+            #     to_image.save(to_composite_path)
+            #     print(f"✅ Generated composite image for {to_type}")
             
             # 视频文件名：甲骨文_to_金文.mp4
             video_filename = f"{idx}_{from_type}_to_{to_type}.mp4"
@@ -555,19 +651,18 @@ class HanziPipeline:
             
             try:
                 # 生成过渡视频（5秒纯动画，不包含停顿）
-                prompt = f"镜头保持不变，开头1s保持首帧静止，1s后左侧米字格子的文字开始按”{transition.description}“变化，同时右侧文字逐渐消失，并过渡到尾帧的右侧文字。整个变化过程持续到4s，然后保持静止。"
+                prompt = f"开头1s保持首帧静止，1s后，{transition.description}，整个变化过程持续到4s，然后保持静止。没有背景音乐"
                 video_output = await self.video_generator.generate_single_video(
                     prompt=prompt,
-                    reference_image_paths=[from_composite_path, to_composite_path],
+                    reference_image_paths=[from_hanzi_path, to_hanzi_path],
                     duration=5,
+                    aspect_ratio="1:1"
                 )
                 
                 # 保存原始视频
                 # raw_video_path = os.path.join(evolution_dir, f"{from_type}_to_{to_type}_raw.mp4")
                 video_output.save(transition_video_path)
                 
-                # 通过后期处理添加前后各1秒的停顿（总时长7秒：1s停顿 + 5s动画 + 1s停顿）
-                # self._add_hold_frames(raw_video_path, transition_video_path, hold_first=1, hold_last=1)
                 video_paths.append(transition_video_path)
                 print(f"✅ Generated transition video {from_type} to {to_type}, saved to {transition_video_path}")
                 
@@ -575,65 +670,356 @@ class HanziPipeline:
                 logger.error(f"Failed to generate transition video {from_type} to {to_type}: {e}")
         
         return video_paths
-    
-    def _add_hold_frames(self, input_video_path: str, output_video_path: str, hold_first: float = 1, hold_last: float = 1):
+
+    async def generate_narration_audio(self, glyph_png_paths: dict[str, str]) -> str:
         """
-        在视频前后添加停顿帧
+        生成旁白音频
+        
+        使用字形名称生成旁白音频，按以下规则对齐：
+        - 第一个字形旁白从 0.3s 开始
+        - 最后一个字形旁白结束时刚好是总时长 - 0.3s
+        - 其他字形旁白，按 idx * 5 - audio 时长 / 2 对齐
         
         Args:
-            input_video_path: 输入视频路径
-            output_video_path: 输出视频路径
-            hold_first: 开头停顿时长（秒）
-            hold_last: 结尾停顿时长（秒）
-        """
-        from moviepy.video.fx.all import freeze
-        from moviepy import VideoFileClip, concatenate_videoclips, ImageSequenceClip
+            glyph_png_paths: 字形 PNG 路径字典
         
-        try:
-            clip = VideoFileClip(input_video_path)
+        Returns:
+            生成的音频文件路径
+        """
+
+        output_path = os.path.join(self.temp_dir, "narration.flac")
+        
+        if os.path.exists(output_path):
+            print(f"🚀 Narration audio already exists: {output_path}")
+            return output_path
+        
+        print(f"🎬 Generating narration audio for {len(glyph_png_paths)} glyphs...")
+
+        # 字形类型列表（按演变顺序）
+        glyph_types = list(glyph_png_paths.keys())
+        
+        if len(glyph_types) < 2:
+            print("⚠️ Not enough glyphs to generate narration audio")
+            return ""
+        
+        # 总时长 = 5s * (字形数量 - 1)
+        total_duration = 5 * (len(glyph_types) - 1)
+        
+        audio_dir = os.path.join(self.temp_dir, "audio")
+        os.makedirs(audio_dir, exist_ok=True)
+        
+        # 生成每个字形的旁白音频
+        silence_1s = os.path.join(assets_dir, "1_s.flac")
+        narration_info = []  # [(audio_path, duration, start_time)]
+        current_duration = 0
+        
+        for idx, glyph_type in enumerate(glyph_types):
+            # 生成旁白音频，prompt 就是字形名称
+            audio_path = os.path.join(audio_dir, f"narration_{idx}.flac")
             
-            # 获取第一帧和最后一帧
-            first_frame = clip.get_frame(0)
-            last_frame = clip.get_frame(clip.duration - 0.01)  # 避免边界问题
+            if not os.path.exists(audio_path):
+                print(f"🎙️ Generating narration for {glyph_type}...")
+                audio_output = await self.audio_generator.generate_single_audio(
+                    prompt=glyph_type,
+                    character="旁白"
+                )
+                audio_output.save(audio_path)
             
-            # 创建停顿片段
-            clips = []
+            # 获取音频实际时长
+            probe_cmd = [
+                "ffprobe", "-v", "error", "-show_entries", "format=duration",
+                "-of", "default=noprint_wrappers=1:nokey=1", audio_path
+            ]
+            audio_duration = float(subprocess.run(probe_cmd, capture_output=True, text=True).stdout.strip())
             
-            # 开头停顿
-            if hold_first > 0:
-                first_hold = ImageSequenceClip([first_frame], fpss=[clip.fps])
-                first_hold = first_hold.with_duration(hold_first)
-                clips.append(first_hold)
+            # 计算开始时间
+            if idx == 0:
+                # 第一个字形旁白从 0.3s 开始
+                start_time = 0.3
+            elif idx == len(glyph_types) - 1:
+                # 最后一个字形旁白结束时要刚好是总时长 - 0.3s
+                start_time = total_duration - current_duration - 0.3 - audio_duration
+            else:
+                # 其他字形旁白，按 idx * 5 - audio_duration / 2 对齐
+                start_time = idx * 5 - 1 - current_duration
             
-            # 中间原始视频
-            clips.append(clip)
+            current_duration = current_duration + audio_duration + start_time
+            narration_info.append((audio_path, audio_duration, start_time))
+            print(f"✅ Narration for {glyph_type}: duration={audio_duration:.2f}s, start={start_time:.2f}s")
             
-            # 结尾停顿
-            if hold_last > 0:
-                last_hold = ImageSequenceClip([last_frame], fpss=[clip.fps])
-                last_hold = last_hold.with_duration(hold_last)
-                clips.append(last_hold)
+        # 拼接音频，填充静音片段使总时长与视频一致
+        # 使用 ffmpeg 合成音频（每个旁白前后填充静音）
+        concat_parts = [
+            "-i", silence_1s
+        ]
+        
+        for i, (audio_path, audio_duration, start_time) in enumerate(narration_info):
+            # 前置静音
+            if start_time > 0:
+                silence_before_path = os.path.join(audio_dir, f"silence_before_{i}.flac")
+                subprocess.run([
+                    "ffmpeg", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo",
+                    "-t", str(start_time), "-y", silence_before_path
+                ], check=True, capture_output=True)
+                concat_parts.extend(["-i", silence_before_path])
             
-            # 合并所有片段
-            final_clip = concatenate_videoclips(clips, method="compose")
-            final_clip.write_videofile(
-                output_video_path,
-                codec="libx264",
-                preset="medium",
-                audio_codec="aac",
-                fps=None,
-                audio_bitrate="192k",
-                logger=None,  # 禁用日志输出
+            concat_parts.extend(["-i", audio_path])
+            
+        concat_parts.extend(["-i", silence_1s])
+
+        # 构建 ffmpeg 命令
+        filter_complex = f"concat=n={int(len(concat_parts) / 2)}:v=0:a=1[out]"
+        subprocess.run([
+            "ffmpeg", "-y",
+            *concat_parts,
+            "-filter_complex", filter_complex,
+            "-map", "[out]",
+            "-ar", "44100",
+            output_path
+        ], check=True, capture_output=True)
+        
+        return output_path
+    
+    def add_audio_to_video(
+        self,
+        video_path: str,
+        audio_path: str,
+        glyph_png_paths: dict[str, str],
+        output_path: str
+    ) -> str:
+        """
+        将旁白音频添加到视频中
+        ffmpeg 合成视频，视频宽高 1344*736
+            1. 取 assets_dir/blackboard.png 作为背景，铺满时长
+            2. 取audio时长，视频前后静止1s，总时长为 1 + audio_duration + 1
+            3. 音频从1s开始播放；视频从1s开始加入
+            4. 将视频调整为 500 * 500；并放在 422, 186 位置
+        
+        Args:
+            video_path: 视频路径
+            audio_path: 音频路径
+            output_path: 输出视频路径
+        
+        Returns:
+            添加音频后的视频路径
+        """
+
+        if not video_path or not audio_path:
+            return video_path
+
+        if not os.path.exists(video_path):
+            print(f"⚠️ Video file not found: {video_path}")
+            return video_path
+
+        if not os.path.exists(audio_path):
+            print(f"⚠️ Audio file not found: {audio_path}")
+            return video_path
+
+        print("🎬 Adding narration audio to video...")
+
+        # =========================
+        # 获取音频时长
+        # =========================
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v", "error",
+                "-show_entries", "format=duration",
+                "-of", "default=noprint_wrappers=1:nokey=1",
+                audio_path
+            ],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+
+        audio_duration = float(result.stdout.strip())
+        print(f"Audio duration: {audio_duration:.2f}s")
+
+        # =========================
+        # 参数
+        # =========================
+        video_width = 1344
+        video_height = 736
+
+        blackboard_path = os.path.join(assets_dir, "blackboard.png")
+
+        # 前1s + 音频 + 后1s
+        total_duration = audio_duration + 2
+
+        # 视频区域
+        video_size = 300
+        video_x = 522
+        video_y = 286
+
+        # =========================
+        # label 动画参数
+        # =========================
+        glyph_types = list(glyph_png_paths.keys())
+        glyph_len = len(glyph_types)
+
+        content_start = 1.0
+        content_end = total_duration - 1.0
+        content_duration = content_end - content_start
+
+        item_duration = content_duration / glyph_len
+
+        x_center = "(w-text_w)/2"
+
+        # macOS 中文字体
+        font_path = "/System/Library/Fonts/PingFang.ttc"
+
+        # =========================
+        # 构建 filter_complex
+        # =========================
+        filter_parts = []
+
+        # 背景
+        filter_parts.append(
+            f"[0:v]"
+            f"scale={video_width}:{video_height}:"
+            f"force_original_aspect_ratio=increase,"
+            f"crop={video_width}:{video_height}"
+            f"[bg]"
+        )
+
+        # 视频
+        filter_parts.append(
+            f"[1:v]"
+            f"scale={video_size}:{video_size}"
+            f"[video]"
+        )
+
+        # 1秒后显示视频
+        filter_parts.append(
+            f"[bg][video]"
+            f"overlay={video_x}:{video_y}:enable='gte(t,1)'"
+            f"[v0]"
+        )
+
+        current_layer = "v0"
+
+        # =========================
+        # drawtext
+        # =========================
+        for i, glyph_type in enumerate(glyph_types):
+
+            item_start = content_start + i * item_duration
+            item_end = item_start + item_duration
+
+            fade_duration = min(0.5, item_duration * 0.25)
+
+            fade_in_end = item_start + fade_duration
+            fade_out_start = item_end - fade_duration
+
+            alpha_expr = (
+                f"if(lt(t,{item_start}),0,"
+                f"if(lt(t,{fade_in_end}),(t-{item_start})/{fade_duration},"
+                f"if(lt(t,{fade_out_start}),1,"
+                f"if(lt(t,{item_end}),({item_end}-t)/{fade_duration},0))))"
             )
-            
-            # 清理临时视频
-            if os.path.exists(input_video_path) and input_video_path != output_video_path:
-                os.remove(input_video_path)
-                
-        except Exception as e:
-            logger.error(f"Failed to add hold frames: {e}")
-            # 如果后期处理失败，直接复制原始视频
-            shutil.copy(input_video_path, output_video_path)
+
+            next_layer = f"v{i+1}"
+
+            filter_parts.append(
+                f"[{current_layer}]"
+                f"drawtext="
+                f"text='{glyph_type}':"
+                f"fontfile='{font_path}':"
+                f"fontsize=60:"
+                f"fontcolor=white:"
+                f"borderw=2:"
+                f"bordercolor=black:"
+                f"x={x_center}:"
+                f"y=190:"
+                f"alpha='{alpha_expr}'"
+                f"[{next_layer}]"
+            )
+
+            current_layer = next_layer
+
+        # 最终视频输出
+        filter_parts.append(
+            f"[{current_layer}]format=yuv420p[vout]"
+        )
+
+        # =========================
+        # 音频
+        # 前后各加1秒静音
+        # =========================
+
+        # # 音频重采样
+        filter_parts.append(
+            "[2:a]aresample=44100[aout]"
+        )
+
+        # # 音频尾部补1秒静音
+        # filter_parts.append(
+        #     "[a1]apad=pad_dur=1[aout]"
+        # )
+
+        filter_complex = ";".join(filter_parts)
+
+        # =========================
+        # ffmpeg
+        # =========================
+        cmd = [
+            "ffmpeg",
+            "-y",
+
+            # 背景
+            "-loop", "1",
+            "-i", blackboard_path,
+
+            # 视频
+            "-i", video_path,
+
+            # 音频
+            "-i", audio_path,
+
+            # filter
+            "-filter_complex", filter_complex,
+
+            # map
+            "-map", "[vout]",
+            "-map", "[aout]",
+
+            # 时长
+            "-t", str(total_duration),
+
+            # 视频编码
+            "-c:v", "libx264",
+            "-preset", "medium",
+
+            # 音频编码
+            "-c:a", "aac",
+            "-b:a", "192k",
+
+            # 输出格式
+            "-pix_fmt", "yuv420p",
+
+            # 结束
+            "-shortest",
+
+            output_path
+        ]
+
+        print(" ".join(cmd))
+
+        try:
+            subprocess.run(
+                cmd,
+                check=True
+            )
+
+            print(f"✅ Added audio to video: {output_path}")
+
+        except subprocess.CalledProcessError as e:
+            print("❌ ffmpeg error:")
+            print(e)
+            return video_path
+
+        return output_path
         
 
     async def merge_evolution_videos(self, video_paths: list[str]) -> str:
@@ -648,7 +1034,7 @@ class HanziPipeline:
             print("⚠️ No videos to merge")
             return ""
         
-        final_video_path = os.path.join(self.working_dir, "evolution.mp4")
+        final_video_path = os.path.join(self.temp_dir, "evolution.mp4")
         
         if os.path.exists(final_video_path):
             print(f"🚀 Evolution video already exists")
@@ -819,6 +1205,494 @@ class HanziPipeline:
                 logger.error(f"Failed to process relate hanzi {hanzi}: {e}")
                 continue
 
+    async def generate_py_video(self, hanzi_info: dict[str, Any], glyph_png_paths: dict[str, str]) -> str:
+        """
+        生成拼音视频
+        hanzi_info.basic_definitions 获取 pinyin 和 audio_path。生成数组（多音字）
+        使用 image_generator 生成拼音图片，大小为 600*300
+        取 assets_dir/blackboard.png 作为背景
+        取 楷书的 png 图片为汉字图片
+        按每个读音读两次，每次1s，中间间隔1s，多音字读音之间间隔2s算。拼接音频。
+        总时长前后静止1s，所以总时长为 1 + (3 * len + 2 * (len - 1)) + 1
+        ffmpeg 合成视频，视频宽高 1344*736
+            1. 背景为 assets_dir/blackboard.png，铺满时长
+            2. 汉字图片放在位置 472, 286 大小 400 * 400，前1s和后1s静止显示
+            3. 拼音图片从1s开始显示。每个图片按大小 200 * 100
+                如果是单音字，则居中，位置为 572, 150
+                如果是多音字，则每个读音间隔 100；按顺序从左到右出现，出现后不消失。每个出现的时机为 1 + idx * 5
+            4. 音频从1s开始播放
+        """
+        print(f"🎬 Starting generate pinyin video for '{self.hanzi}'...")
+
+        output_video_path = os.path.join(self.temp_dir, "pinyin_video.mp4")
+        
+        if os.path.exists(output_video_path):
+            print(f"⚠️ Output video already exists, skipping py video generation")
+            return output_video_path
+
+        basic_definitions = hanzi_info.get("basic_definitions", [])
+        if not basic_definitions:
+            print(f"⚠️ No basic definitions found, skipping py video generation")
+            return ""
+        
+        # 创建临时目录
+        temp_dir = os.path.join(self.temp_dir, "py_temp")
+        os.makedirs(temp_dir, exist_ok=True)
+        
+        # 获取所有拼音
+        pinyins = [d["pinyin"] for d in basic_definitions]
+        audio_paths = [d["audio_path"] for d in basic_definitions]
+        num_pinyins = len(pinyins)
+        
+        print(f"📝 Found {num_pinyins} pinyin(s): {pinyins}")
+        
+        # 资源路径
+        blackboard_path = os.path.join(assets_dir, "blackboard.png")
+        
+        # 获取楷书图片路径
+        kaishu_path = None
+        for glyph_type, png_path in glyph_png_paths.items():
+            if glyph_type == "楷书" and png_path:
+                kaishu_path = png_path
+                break
+        
+        if not kaishu_path or not os.path.exists(kaishu_path):
+            print(f"⚠️ Kaishu image not found, skipping py video generation")
+            return ""
+        
+        audio_durations = []
+        # 计算内容时长：每个读音读两次（audio_duration+1s），中间间隔1s，多音字间隔2s
+        content_duration = 2 * (num_pinyins - 1)
+        
+        for audio_path in audio_paths:
+            if audio_path and os.path.exists(audio_path):
+                # 使用 ffprobe 获取音频时长
+                probe_cmd = [
+                    "ffprobe", "-v", "error", "-show_entries", "format=duration",
+                    "-of", "default=noprint_wrappers=1:nokey=1", audio_path
+                ]
+                audio_duration = float(subprocess.run(probe_cmd, capture_output=True, text=True).stdout.strip())
+                audio_durations.append(audio_duration)
+                content_duration += audio_duration + 1
+        
+        # 总时长 = 1s(前静止) + content_duration + 1s(后静止)
+        total_duration = 1 + content_duration + 1
+        print(f"⏱️ Content duration: {content_duration}s, Total duration: {total_duration}s")
+        
+        # 拼接音频：每个读音读两次，每次1s，间隔1s，多音字间隔2s
+        final_audio_path = os.path.join(temp_dir, "py_final_audio.mp3")
+        
+        if os.path.exists(final_audio_path):
+            print(f"⚠️ Final audio already exists, skipping audio concatenation")
+        else:        
+            silence_1s = os.path.join(assets_dir, "1_s.flac")
+            silence_2s = os.path.join(assets_dir, "2_s.flac")
+            audio_list_file = os.path.join(temp_dir, "audio_list.txt")
+            
+            with open(audio_list_file, "w") as f:
+                for idx, audio_path in enumerate(audio_paths):
+                    if audio_path and os.path.exists(audio_path):
+                        # 读第一次
+                        f.write(f"file '{audio_path}'\n")
+                        # 间隔1s（静音）
+                        f.write(f"file '{silence_1s}'\n")
+                        # 读第二次
+                        f.write(f"file '{audio_path}'\n")
+
+                        # 多音字间隔2s（最后一个音后面不间隔）
+                        if idx < num_pinyins - 1:
+                            f.write(f"file '{silence_2s}'\n")
+        
+            # 使用 ffmpeg 拼接音频
+            concat_audio_path = os.path.join(temp_dir, "py_concat.flac")
+            subprocess.run([
+                "ffmpeg", "-y", "-f", "concat", "-safe", "0",
+                "-i", audio_list_file, "-c:a", "flac", concat_audio_path
+            ], check=True)
+            
+            # 给音频前面加1s静音，使音频从1s开始播放
+            subprocess.run([
+                "ffmpeg", "-y",
+                "-i", silence_1s,
+                "-i", concat_audio_path,
+                "-i", silence_1s,
+                "-filter_complex", "concat=n=3:v=0:a=1[out]",
+                "-map", "[out]",
+                "-ar", "44100",
+                final_audio_path
+            ], check=True, capture_output=True)
+        
+        # 构建 ffmpeg 视频合成命令
+        # 视频尺寸
+        video_width = 1344
+        video_height = 736
+        
+        # 拼音文字位置和样式（居中显示）
+        pinyin_y = 190  # y 位置
+        font_size = 80  # 字体大小
+        
+        # 计算每个拼音的显示时间
+        # 每个读音读两次，中间间隔1s
+        pinyin_times = []  # [(start, end), ...]
+        current_time = 1.0  # 从1s开始
+        
+        for idx, audio_duration in enumerate(audio_durations):
+            # 读两次 + 中间间隔1s
+            pinyin_duration = audio_duration * 2 + 1
+            pinyin_times.append((current_time, current_time + pinyin_duration))
+            current_time += pinyin_duration
+            # 多音字之间间隔2s
+            if idx < num_pinyins - 1:
+                current_time += 2
+        
+        # 构建 ffmpeg filter_complex（使用 drawtext）
+        filter_parts = []
+        
+        # 背景铺满
+        filter_parts.append(f"[0:v]scale={video_width}:{video_height}:force_original_aspect_ratio=increase,crop={video_width}:{video_height}[bg]")
+        
+        # 汉字图片：位置 522, 286，大小 300x300
+        filter_parts.append(f"[1:v]scale=300:300[hanzi]")
+        filter_parts.append(f"[bg][hanzi]overlay=522:286[bg_with_hanzi]")
+        
+        # 使用 drawtext 显示拼音（白色，居中）
+        # 居中位置 x=(w-text_w)/2
+        x_center = "(w-text_w)/2"
+        
+        if num_pinyins == 1:
+            # 单音字：从1s开始显示
+            start_time, end_time = 0, total_duration
+            filter_parts.append(
+                f"[bg_with_hanzi]drawtext=text='{pinyins[0]}':fontsize={font_size}:fontcolor=white:"
+                f"x={x_center}:y={pinyin_y}:enable='between(t\\,{start_time}\\,{end_time})'[bg_with_content]"
+            )
+            prev_bg = "[bg_with_content]"
+        else:
+            # 多音字：每个拼音独立显示，带2s淡入淡出过渡
+            # 使用 fade 滤镜实现过渡效果
+            all_py = "[bg_with_hanzi]"
+            for idx, (pinyin, (start_time, end_time)) in enumerate(zip(pinyins, pinyin_times)):
+                fade_duration = 2.0
+                fade_start = end_time - fade_duration
+                
+                # 构建此拼音的显示逻辑：fade in 开始，solid 中间，fade out 结束
+                filter_parts.append(
+                    f"{all_py}drawtext=text='{pinyin}':fontsize={font_size}:fontcolor=white:"
+                    f"x={x_center}:y={pinyin_y}:enable='between(t\\,{start_time}\\,{end_time})'"
+                    f"[tmp_{idx}]"
+                )
+                
+                # 添加 fade 效果
+                if idx == 0:
+                    # 第一个：fade in
+                    filter_parts.append(f"[tmp_{idx}]fade=t=in:st={start_time}:d={fade_duration}[py_{idx}]")
+                elif idx == num_pinyins - 1:
+                    # 最后一个：fade out
+                    filter_parts.append(f"[tmp_{idx}]fade=t=out:st={fade_start}:d={fade_duration}[py_{idx}]")
+                else:
+                    # 中间的：fade in + fade out
+                    filter_parts.append(f"[tmp_{idx}]fade=t=in:st={start_time}:d={fade_duration/2}[py_{idx}_in]")
+                    filter_parts.append(f"[py_{idx}_in]fade=t=out:st={fade_start}:d={fade_duration}[py_{idx}]")
+                
+                all_py = f"[py_{idx}]"
+            
+            # 合并所有拼音层
+            filter_parts.append(f"{all_py}format=yuv420p[bg_with_content]")
+            prev_bg = "[bg_with_content]"
+        
+        filter_complex = ";".join(filter_parts)
+        
+        # 构建命令
+        cmd = [
+            "ffmpeg", "-y",
+            "-loop", "1", "-i", blackboard_path,
+            "-loop", "1", "-i", kaishu_path,
+            "-filter_complex", filter_complex,
+            "-i", final_audio_path,
+            "-map", f"{prev_bg}",
+            "-map", "2:a",
+            "-c:v", "libx264", "-preset", "medium", "-t", str(total_duration),
+            "-c:a", "aac", "-b:a", "192k",
+            "-shortest",
+            "-pix_fmt", "yuv420p",
+            output_video_path
+        ]
+        
+        print(f"🎬 Generating pinyin video with ffmpeg...")
+        result = subprocess.run(cmd, capture_output=True, text=True)
+
+        if result.returncode != 0:
+            print(f"⚠️ Failed to generate pinyin video: {result.stderr}")
+            return ""
+            
+        print(f"✅ Generated pinyin video: {output_video_path}")
+        return output_video_path
+    
+    async def generate_stroke_video(self) -> str:
+        """
+        生成笔画视频
+        笔画 gif 为 working_dir/brush_stroke.gif
+        获取 gif 时长
+        总时长为前后静止1s，1 + gif_duration + 1
+        使用 chat_model 生成笔画顺序文本。prompt 为 '生成汉字"日"的笔画顺序。只返回笔画顺序的文案，如竖、横、横'
+        将笔画顺序文本生成音频，并调整跟 gif_duration 时长一致
+        ffmpeg 合成视频，视频宽高 1344*736
+            1. 取 assets_dir/blackboard.png 作为背景，铺满时长
+            2. 取 assets_dir/mi.png 作为米字格子
+            3. gif 从1s开始出现，持续 gif_duration 秒
+            4. 将 mi.png 和 gif 调整为 500 * 500；并放在 422, 186 位置；gif 在 mi.png 的上面
+            5. 音频从1s开始播放，时长调整为 gif_duration
+        Returns:
+            视频路径
+        """
+        print(f"🎬 Starting generate stroke video for '{self.hanzi}'...")
+        
+        # 输出路径
+        output_video_path = os.path.join(self.temp_dir, "stroke_video.mp4")
+        
+        if os.path.exists(output_video_path):
+            print(f"🚀 Skipped generating stroke video, already exists")
+            return output_video_path
+        
+        # 笔画 gif 路径
+        brush_stroke_gif_path = os.path.join(self.working_dir, "brush_stroke.gif")
+        if not os.path.exists(brush_stroke_gif_path):
+            print(f"⚠️ Brush stroke gif not found: {brush_stroke_gif_path}")
+            return ""
+        
+        # 获取 gif 时长
+        probe_cmd = [
+            "ffprobe", "-v", "error", "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1", brush_stroke_gif_path
+        ]
+        gif_duration_result = subprocess.run(probe_cmd, capture_output=True, text=True)
+        try:
+            gif_duration = float(gif_duration_result.stdout.strip())
+        except (ValueError, subprocess.CalledProcessError):
+            print(f"⚠️ Failed to get gif duration, using default 3s")
+            gif_duration = 3.0
+        
+        # 总时长 = 1s(前静止) + gif_duration + 1s(后静止)
+        total_duration = 1 + gif_duration + 1
+        print(f"⏱️ Gif duration: {gif_duration}s, Total duration: {total_duration}s")
+        
+        # 生成音频
+        stroke_audio_path = os.path.join(self.temp_dir, "stroke_audio.flac")
+        
+        if os.path.exists(stroke_audio_path):
+            print(f"🚀 Skipped generating stroke audio, already exists")
+        else:
+            # 使用 chat_model 生成笔画顺序文本
+            stroke_prompt = f'生成汉字"{self.hanzi}"的笔画顺序。只返回笔画顺序的文案，如竖、横、横'
+            print(f"🧠 Generating stroke order text...")
+            
+            stroke_order_text = ""
+            for retry in range(3):
+                try:
+                    response = await self.chat_model.ainvoke(stroke_prompt)
+                    stroke_order_text = response.content.strip()
+                    print(f"📝 Stroke order: {stroke_order_text}")
+                    break
+                except Exception as e:
+                    logger.warning(f"Failed to generate stroke order text (retry {retry+1}): {e}")
+                    if retry == 2:
+                        stroke_order_text = ""
+            
+            
+            if not stroke_order_text:
+                # 如果没有生成文字，使用默认文字
+                stroke_order_text = f"汉字{self.hanzi}"
+            
+            audio_output = await self.audio_generator.generate_single_audio(
+                prompt=stroke_order_text,
+                character="旁白"
+            )
+            audio_output.save(stroke_audio_path)
+            print(f"✅ Generated stroke audio: {stroke_audio_path}")
+            
+        # 资源路径
+        blackboard_path = os.path.join(assets_dir, "blackboard.png")
+        mi_grid_path = os.path.join(assets_dir, "mi.png")
+        
+        # 视频尺寸
+        video_width = 1344
+        video_height = 736
+        
+        # 米字格和 gif 尺寸及位置
+        grid_size = 360
+        grid_x = 492
+        grid_y = 220
+        
+        # 构建 ffmpeg 命令
+        # 1. 背景铺满时长
+        # 2. mi.png 作为米字格子，500x500，放在 422, 186
+        # 3. gif 从1s开始，放在 mi.png 上面（同一位置），持续 gif_duration
+        # 4. 音频从1s开始播放（使用adelay延迟1s）
+        cmd = [
+            "ffmpeg", "-y",
+            "-loop", "1", "-i", blackboard_path,
+            "-loop", "1", "-i", mi_grid_path,
+            "-i", brush_stroke_gif_path,
+            "-filter_complex", (
+                f"[0:v]scale={video_width}:{video_height}:force_original_aspect_ratio=increase,crop={video_width}:{video_height}[bg];"
+                f"[1:v]scale={grid_size}:{grid_size}[mi_grid];"
+                f"[2:v]fps=25,scale={grid_size}:{grid_size}[gif];"
+                f"[bg][mi_grid]overlay={grid_x}:{grid_y}[bg_with_grid];"
+                f"[bg_with_grid][gif]overlay={grid_x}:{grid_y}:enable='between(t,1,1+{gif_duration})'[video]"
+            ),
+            "-i", stroke_audio_path,
+            "-filter_complex", "[3:a]adelay=1000|1000[a_delayed]",
+            "-map", "[video]",
+            "-map", "[a_delayed]",
+            "-t", str(total_duration),
+            "-c:v", "libx264", "-preset", "medium",
+            "-c:a", "aac", "-b:a", "192k",
+            "-shortest",
+            "-pix_fmt", "yuv420p",
+            output_video_path
+        ]
+        
+        print(f"🎬 Generating stroke video with ffmpeg...")
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        
+        if result.returncode != 0:
+            print(f"❌ ffmpeg error: {result.stderr}")
+            return ""
+        
+        print(f"✅ Generated stroke video: {output_video_path}")
+        return output_video_path
+
+    async def generate_evolution_video(self, glyph_png_paths: list[str]) -> str:
+        """
+        生成演变动画
+        """
+        
+        print(f"🎬 Starting generate evolution video for '{self.hanzi}'...")
+        
+        final_video_path = os.path.join(self.temp_dir, "evolution_final_video.mp4")
+        
+        if os.path.exists(final_video_path):
+            print(f"🚀 Skipped generating evolution final video, already exists")
+            return final_video_path
+        
+        # 生成过渡描述
+        transitions = await self.generate_transitions(glyph_png_paths)
+        
+        if self.check_interrupt("transition"):
+            return ""
+        
+        video_paths = await self.generate_evolution_videos(glyph_png_paths, transitions)
+        
+        # 生成旁白
+        narration_audio_path = await self.generate_narration_audio(glyph_png_paths)
+        
+        # Step 7: 合并视频
+        merged_video_path = await self.merge_evolution_videos(video_paths)
+
+        # Step 10: 将旁白音频添加到视频
+        self.add_audio_to_video(merged_video_path, narration_audio_path, glyph_png_paths, final_video_path)
+        
+        return final_video_path
+    
+    async def merge_videos(self, video_paths: list[str]) -> str:
+        """
+        合并视频。ffmpeg将视频合并成一个视频，并且使用 fade 转场
+        
+        Args:
+            video_paths: 视频路径列表 [py_video, stroke_video, transition_video]
+        
+        Returns:
+            合并后的视频路径
+        """
+        print(f"🎬 Merging hanzi videos...")
+        final_video_path = os.path.join(self.working_dir, "final_video.mp4")
+        if os.path.exists(final_video_path):
+            print(f"🚀 Skipped generating final video, already exists")
+            return final_video_path
+        
+        if not video_paths:
+            print("⚠️ No videos to merge")
+            return ""
+        
+        # 过滤存在的视频
+        valid_video_paths = [v for v in video_paths if os.path.exists(v)]
+        if not valid_video_paths:
+            print("⚠️ No valid video files to merge")
+            return ""
+        
+        print(f"⏱️ Merging {len(valid_video_paths)} videos with fade transitions...")
+        
+        # 创建临时文件列表
+        concat_list_path = os.path.join(self.temp_dir, "final_concat_list.txt")
+        
+        try:
+            # 获取每个视频的时长
+            video_durations = []
+            for video_path in valid_video_paths:
+                result = subprocess.run(
+                    ["ffprobe", "-v", "error", "-show_entries", "format=duration", 
+                     "-of", "default=noprint_wrappers=1:nokey=1", video_path],
+                    capture_output=True, text=True, check=True
+                )
+                duration = float(result.stdout.strip())
+                video_durations.append(duration)
+            
+            # 生成 concat 列表文件
+            with open(concat_list_path, "w") as f:
+                for video_path in valid_video_paths:
+                    f.write(f"file '{video_path}'\n")
+            
+            # 构建带有 fade 转场的 filter_complex
+            # fade 转场：前一个视频淡出，后一个视频淡入
+            # 使用 crossfade 效果
+            filter_complex = ""
+            
+            if len(valid_video_paths) == 1:
+                # 单个视频直接复制
+                subprocess.run([
+                    "ffmpeg", "-y", "-i", valid_video_paths[0],
+                    "-c:v", "libx264", "-preset", "medium",
+                    "-c:a", "aac", "-b:a", "192k",
+                    final_video_path
+                ], check=True, capture_output=True)
+            else:
+                # 多个视频直接拼接（无转场）
+                inputs = []
+                for i, video_path in enumerate(valid_video_paths):
+                    inputs.extend(["-i", video_path])
+                
+                # 使用 concat 滤镜直接拼接
+                concat_inputs = ""
+                for i in range(len(valid_video_paths)):
+                    concat_inputs += f"[{i}:v][{i}:a]"
+                
+                filter_complex = f"{concat_inputs}concat=n={len(valid_video_paths)}:v=1:a=1[outv][outa]"
+                
+                cmd = ["ffmpeg", "-y"] + inputs + [
+                    "-filter_complex", filter_complex,
+                    "-map", "[outv]", "-map", "[outa]",
+                    "-c:v", "libx264", "-preset", "medium",
+                    "-c:a", "aac", "-b:a", "192k",
+                    final_video_path
+                ]
+                
+                subprocess.run(cmd, check=True, capture_output=True)
+            
+            # 清理临时文件
+            if os.path.exists(concat_list_path):
+                os.remove(concat_list_path)
+            
+            print(f"✅ Merged videos with fade transitions: {final_video_path}")
+            return final_video_path
+            
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Failed to merge videos: {e}")
+            # 清理临时文件
+            if os.path.exists(concat_list_path):
+                os.remove(concat_list_path)
+            return ""
+
+
     async def __call__(self) -> str:
         """
         执行完整的汉字演变流水线
@@ -849,28 +1723,26 @@ class HanziPipeline:
         
         if self.check_interrupt("idea"):
             return ""
+
+        # Step4: 生成拼音视频
+        py_video_path = await self.generate_py_video(hanzi_info, glyph_png_paths)
+
+        # Step5: 生成笔画视频
+        stroke_video_path = await self.generate_stroke_video()
+
+        # Step 6: 生成演变动画
+        transition_video_path = await self.generate_evolution_video(glyph_png_paths)
         
-        # Step 4: 生成过渡描述
-        transitions = await self.generate_transitions(glyph_png_paths)
-        
-        if self.check_interrupt("transition"):
-            return ""
-        
-        # return
-        
-        # Step 5: 生成演变动画
-        video_paths = await self.generate_evolution_videos(glyph_png_paths, transitions)
+        # Step 7: 合并视频
+        final_video_path = await self.merge_videos([py_video_path, stroke_video_path, transition_video_path])
         
         if self.check_interrupt("video"):
             return ""
-        
-        # Step 6: 合并视频
-        final_video_path = await self.merge_evolution_videos(video_paths)
 
-        # Step 7: 保存角色信息
+        # Step 8: 保存角色信息
         await self.save_character_info(glyph_png_paths)
         
-        # Step 8: 爬取相关文字的信息（只提取楷书图片，并整理保存到角色信息）
+        # Step 9: 爬取相关文字的信息（只提取楷书图片，并整理保存到角色信息）
         if self.relate_hanzi:
             await self.crawl_relate_hanzi_info()
         
