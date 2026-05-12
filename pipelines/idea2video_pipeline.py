@@ -232,6 +232,7 @@ class Idea2VideoPipeline:
                 chat_model=self.chat_model,
                 image_generator=self.image_generator,
                 video_generator=self.video_generator,
+                audio_generator=self.audio_generator,
                 working_dir=hanzi_working_dir,
                 hanzi=self.hanzi,
                 relate_hanzi=self.relate_hanzi,
@@ -338,6 +339,10 @@ class Idea2VideoPipeline:
                 print(f"🎬 Starting concatenating videos...")
                 video_clips = [VideoFileClip(final_video_path, audio=True)
                             for final_video_path in all_video_paths]
+                
+                if self.mode == "hanzi" and hanzi_video_path:
+                    video_clips.append(VideoFileClip(hanzi_video_path, audio=True))
+                
                 final_video = concatenate_videoclips(video_clips, method="compose")
                 final_video.write_videofile(final_video_path, codec="libx264", preset="medium", audio_codec="aac", fps=None, audio_bitrate="192k")
                 print(f"☑️ Concatenated videos, saved to {final_video_path}.")
