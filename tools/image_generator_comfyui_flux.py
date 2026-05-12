@@ -34,8 +34,10 @@ logger = logging.getLogger(__name__)
 
 text_to_image_workflow_path = "workflows/flux2_klein_text_to_image.json"
 image_to_image_workflow_path = "workflows/flux2_klein_8image.json"
+qwen_image_edit_workflow_path = "workflows/qwen_image_edit.json"
 text_to_image_output_node_ids = ["9"]
 image_to_image_output_node_ids = ["94"]
+qwen_image_edit_output_node_ids = ["14"]
 max_noise = 2**50 - 1
 
 class ImageGeneratorComfyUIFlux:
@@ -70,6 +72,25 @@ class ImageGeneratorComfyUIFlux:
             base_url=config.get("base_url", "http://127.0.0.1:8188"),
             rate_limiter=rate_limiter,
         )
+    
+    async def load_qwen_edit_workflow(self, runner: ComfyUIWorkflowRunner, prompt: str, reference_image_paths: List[str] = None, width: int = 2048, height: int = 2048) -> dict[str, Any]:
+        """加载Qwen编辑工作流"""
+        
+        workflow = runner.load_workflow(qwen_image_edit_workflow_path)
+        workflow["14"]["inputs"]["filename_prefix"] = str(uuid.uuid4())
+        workflow["8"]["inputs"]["prompt"] = prompt
+        workflow["22"]["inputs"]["scale_to_length"] = width
+        workflow["7"]["inputs"]["seed"] = random.randint(1, max_noise)
+        
+        image1 = reference_image_paths[0]
+        image1_name = await runner.upload_image(image1)
+        workflow["10"]["inputs"]["image"] = image1_name
+        
+        image2 = reference_image_paths[1]
+        image2_name = await runner.upload_image(image2)
+        workflow["11"]["inputs"]["image"] = image2_name
+
+        return workflow
     
     
     async def load_t2i_workflow(self, runner: ComfyUIWorkflowRunner, prompt: str, width: int, height: int) -> dict[str, Any]:
@@ -174,6 +195,7 @@ class ImageGeneratorComfyUIFlux:
         *,
         reference_image_paths: List[str] = None,
         size: Optional[str] = "2048x2048",
+        workflow_name: Optional[str] = None,
         **kwargs,
     ) -> ImageOutput:
         """
@@ -199,11 +221,15 @@ class ImageGeneratorComfyUIFlux:
         if size:
             width, height = map(int, size.split("x"))
         
-        if reference_image_paths:
-            logger.info("==========Using reference images for style consistency================")
-            workflow = await self.load_i2i_workflow(runner=runner, prompt=prompt, reference_image_paths=reference_image_paths, width=width, height=height)
+        if workflow_name == "qwen_edit":
+            logger.info("==========Using Qwen edit workflow================")
+            workflow = await self.load_qwen_edit_workflow(runner=runner, prompt=prompt, reference_image_paths=reference_image_paths, width=width, height=height)
         else:
-            workflow = await self.load_t2i_workflow(runner=runner, prompt=prompt, width=width, height=height)
+            if reference_image_paths:
+                logger.info("==========Using reference images for style consistency================")
+                workflow = await self.load_i2i_workflow(runner=runner, prompt=prompt, reference_image_paths=reference_image_paths, width=width, height=height)
+            else:
+                workflow = await self.load_t2i_workflow(runner=runner, prompt=prompt, width=width, height=height)
         # print("========================\n", json.dumps(workflow, indent=4), "\n========================")
         # 执行工作流
         outputs = await runner.run(
