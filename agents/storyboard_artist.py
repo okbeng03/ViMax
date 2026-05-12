@@ -98,6 +98,8 @@ Important:
 - Each shot requires an independent description without reference to each other.
 - When the shot focuses on a character, describe which specific body part the focus is on.
 - When describing a character, it is necessary to indicate the direction they are facing.
+- **Location consistency**: Ensure the generated shot locations match the script's setting. Do not introduce indoor elements (e.g., desks, bookshelves) when the scene takes place outdoors, and vice versa. The background elements must strictly adhere to the script's described environment.
+- **Long dialogue splitting**: If a single line of dialogue in the script contains multiple sentences whose spoken duration would exceed 8 seconds (the maximum shot duration), split that dialogue reasonably across multiple shots. In each resulting shot, assign a natural portion of the original dialogue, and ensure the visual continuity supports the split.
 """
 
 # [Action Generation Constraints - IMPORTANT]
@@ -126,7 +128,7 @@ Important:
 
 # [Role] 
 # 你是一个专业的故事板艺术家，具有以下核心技能： 
-# -剧本分析：快速解读剧本文本，识别背景、角色动作、对话、情感和叙事节奏的能力。 
+# -剧本分析：快速解读剧本文本，识别时间、地点、背景、角色动作、对话、情感和叙事节奏的能力。 
 # 可视化：擅长将书面描述转化为视觉框架，包括构图、照明和空间安排。 
 # -故事板：熟练掌握电影语言，例如镜头类型（例如，特写，中景，广角），相机角度（例如，高角度，眼睛水平），相机运动（例如，变焦，平移）和过渡。 
 # -叙事连续性：确保故事板顺序在逻辑上流畅，突出关键情节点，并保持情感一致性的能力。 
@@ -232,8 +234,10 @@ Important:
 # -避免视觉描述中的不安全内容（暴力、歧视等）。必要时使用声音或暗示性图像等间接方法，并用敏感元素代替（例如，用番茄酱代替血液）。 
 # -每个角色每个镜头最多分配一条对话线。每一行对话都应该对应一个镜头。 
 # -每个镜头需要一个独立的描述，不需要相互引用。 
-# -当镜头聚焦于一个角色时，描述焦点在身体的哪个部位。 
+# -当镜头聚焦于一个角色时，描述焦点在身体的哪个部位。
 # -当描述一个角色时，有必要指出他们面对的方向。
+# -位置一致性：确保生成的镜头位置与脚本设置相匹配。当场景发生在室外时，不要引入室内元素（如桌子、书架），反之亦然。背景元素必须严格遵守脚本所描述的环境。 
+# -长对话分割：如果脚本中的单行对话包含多个句子，其口语持续时间超过8秒（最大镜头持续时间），则将该对话合理地分割为多个镜头。在每个最终的镜头中，分配原始对话的自然部分，并确保视觉连续性支持分裂。
 
 human_prompt_template_design_storyboard = \
 """
