@@ -33,13 +33,13 @@ Below is an example of the input format:
 </FRAME_DESC>
 
 <SEQ_DESC>
-Image 0: A front-view portrait of Alice.
-Image 1: A front-view portrait of Bob.
-Image 2: 甲骨文 of the character 日.如果未明确，泛指古人的汉字
-Image 3: 楷书、简体 of the character 日.如果未明确，泛指现在的汉字
-Image 4: [Camera 0] Medium shot of the supermarket aisle. Alice and Bob are shown in profile facing the right side of the frame. Bob is on the right side of the frame, and Alice is on the left side. Alice, looking down and pushing a shopping cart, follows closely behind Bob and accidentally bumps into his heel.
-Image 5: [Camera 1] Shot from Alice's over-the-shoulder perspective. Alice is on the side closer to the camera, with only her shoulder appearing in the lower left corner of the frame. Bob is on the side farther from the camera, positioned slightly right of center in the frame. Bob quickly turns around, and his expression shifts from neutral to surprised.
-Image 6: [Camera 2] Shot from Bob's over-the-shoulder perspective. Bob is on the side closer to the camera, with only his shoulder appearing in the lower right corner of the frame. Alice is on the side farther from the camera, positioned slightly left of center in the frame. Alice looks down, then up as she prepares to apologize. Upon realizing it's someone familiar, her expression shifts to one of surprise.
+Image 1: A front-view portrait of Alice.
+Image 2: A front-view portrait of Bob.
+Image 3: 甲骨文 of the character 日.如果未明确，泛指古人的汉字
+Image 4: 楷书、简体 of the character 日.如果未明确，泛指现在的汉字
+Image 5: [Camera 0] Medium shot of the supermarket aisle. Alice and Bob are shown in profile facing the right side of the frame. Bob is on the right side of the frame, and Alice is on the left side. Alice, looking down and pushing a shopping cart, follows closely behind Bob and accidentally bumps into his heel.
+Image 6: [Camera 1] Shot from Alice's over-the-shoulder perspective. Alice is on the side closer to the camera, with only her shoulder appearing in the lower left corner of the frame. Bob is on the side farther from the camera, positioned slightly right of center in the frame. Bob quickly turns around, and his expression shifts from neutral to surprised.
+Image 7: [Camera 2] Shot from Bob's over-the-shoulder perspective. Bob is on the side closer to the camera, with only his shoulder appearing in the lower right corner of the frame. Alice is on the side farther from the camera, positioned slightly left of center in the frame. Alice looks down, then up as she prepares to apologize. Upon realizing it's someone familiar, her expression shifts to one of surprise.
 </SEQ_DESC>
 
 
@@ -265,7 +265,7 @@ class ReferenceImageSelector:
         if len(available_image_path_and_text_pairs) >= 8 or only_text_model:
             human_content = []
             for idx, (_, text) in enumerate(available_image_path_and_text_pairs):
-                human_content.append(f"Image {idx}: {text}")
+                human_content.append(f"Image {idx + 1}: {text}")
             parser = PydanticOutputParser(pydantic_object=RefImageIndicesAndTextPrompt)
 
             messages = [
