@@ -171,7 +171,7 @@
   },
   "75:70": {
     "inputs": {
-      "unet_name": "flux-2-klein-base-4b.safetensors",
+      "unet_name": "flux-2-klein-9b.safetensors",
       "weight_dtype": "default"
     },
     "class_type": "UNETLoader",
@@ -192,7 +192,7 @@
   },
   "75:72": {
     "inputs": {
-      "vae_name": "flux-2-klein-9b.safetensors"
+      "vae_name": "flux2-vae.safetensors"
     },
     "class_type": "VAELoader",
     "_meta": {
