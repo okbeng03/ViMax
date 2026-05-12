@@ -185,7 +185,6 @@ class ComfyUIWorkflowRunner:
 
                 async with session.post(url, data=data) as response:
                     if response.status != 200:
-                        print(4444444, response)
                         error_text = await response.text()
                         raise RuntimeError(f"Failed to upload audio: {error_text}")
                     
