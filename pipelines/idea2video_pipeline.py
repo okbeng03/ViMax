@@ -25,6 +25,7 @@ class Idea2VideoPipeline:
         interrupt_step: str = None,
         mode: str = "normal",
         hanzi: str = None,
+        new_character: List[str] = None,
         relate_hanzi: List[str] = None,
         gacha_config: dict = None,
     ):
@@ -36,6 +37,7 @@ class Idea2VideoPipeline:
         self.interrupt_step = interrupt_step
         self.mode = mode
         self.hanzi = hanzi
+        self.new_character = new_character
         self.relate_hanzi = relate_hanzi
         self.gacha_config = gacha_config
         os.makedirs(self.working_dir, exist_ok=True)
@@ -64,6 +66,7 @@ class Idea2VideoPipeline:
             interrupt_step=config["interrupt_step"],
             mode=config["mode"],
             hanzi=config["hanzi"],
+            new_character=config.get("new_character", "").split(",") if config.get("new_character") else None,
             relate_hanzi=config.get("relate_hanzi", "").split(",") if config.get("relate_hanzi") else None,
             gacha_config=config["gacha_config"],
         )
@@ -73,20 +76,44 @@ class Idea2VideoPipeline:
         story: str,
     ):
         save_path = os.path.join(self.working_dir, "characters.json")
+        need_extra = True
+        characters = None
+        lack_characters = []
 
         if os.path.exists(save_path):
             with open(save_path, "r", encoding="utf-8") as f:
                 characters = json.load(f)
             characters = [CharacterInScene.model_validate(
                 character) for character in characters]
-            print(f"🚀 Loaded {len(characters)} characters from existing file.")
-        else:
-            characters = await self.character_extractor.extract_characters(story)
+            
+            # 检查新角色是否存在，不存在也要创建
+            if self.new_character:
+                exist_characters = [character.identifier_in_scene for character in characters]
+                
+                for character in self.new_character:
+                    if character not in exist_characters:
+                        lack_characters.append(character)
+                        need_extra = True
+        
+        if need_extra:
+            characters_response = await self.character_extractor.extract_characters(story)
+            
+            if characters and lack_characters:
+                # 新增角色
+                new_idx = len(characters)
+                
+                for character in characters_response:
+                    if character.identifier_in_scene in lack_characters:
+                        character.idx = new_idx
+                        characters.append(character)
+            
             with open(save_path, "w", encoding="utf-8") as f:
                 json.dump([character.model_dump()
                           for character in characters], f, ensure_ascii=False, indent=4)
             print(
                 f"✅ Extracted {len(characters)} characters from story and saved to {save_path}.")
+        else:
+            print(f"🚀 Loaded {len(characters)} characters from existing file.")
 
         return characters
 
