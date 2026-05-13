@@ -642,13 +642,19 @@ class HanziPipeline:
             # 视频文件名：甲骨文_to_金文.mp4
             video_filename = f"{idx}_{from_type}_to_{to_type}.mp4"
             transition_video_path = os.path.join(evolution_dir, video_filename)
+            transition_video_an_path = os.path.join(evolution_dir, f"{idx}_{from_type}_to_{to_type}_an.mp4")
+            
+            if os.path.exists(transition_video_an_path):
+                print(f"🚀 Transition video already exists: {video_filename}")
+                video_paths.append(transition_video_an_path)
+                continue
             
             # 如果视频已存在，跳过
             if os.path.exists(transition_video_path):
-                print(f"🚀 Transition video already exists: {video_filename}")
-                video_paths.append(transition_video_path)
+                subprocess.run(["ffmpeg", "-i", transition_video_path, "-an", "-c:v", "copy", transition_video_an_path], check=True, capture_output=True)
+                video_paths.append(transition_video_an_path)
                 continue
-            
+
             try:
                 # 生成过渡视频（5秒纯动画，不包含停顿）
                 prompt = f"开头1s保持首帧静止，1s后，{transition.description}，整个变化过程持续到4s，然后保持静止。没有背景音乐"
@@ -662,9 +668,10 @@ class HanziPipeline:
                 # 保存原始视频
                 # raw_video_path = os.path.join(evolution_dir, f"{from_type}_to_{to_type}_raw.mp4")
                 video_output.save(transition_video_path)
+                subprocess.run(["ffmpeg", "-i", transition_video_path, "-an", "-c:v", "copy", transition_video_an_path], check=True, capture_output=True)
                 
-                video_paths.append(transition_video_path)
-                print(f"✅ Generated transition video {from_type} to {to_type}, saved to {transition_video_path}")
+                video_paths.append(transition_video_an_path)
+                print(f"✅ Generated transition video {from_type} to {to_type}, saved to {transition_video_an_path}")
                 
             except Exception as e:
                 logger.error(f"Failed to generate transition video {from_type} to {to_type}: {e}")
@@ -843,9 +850,41 @@ class HanziPipeline:
         video_height = 736
 
         blackboard_path = os.path.join(assets_dir, "blackboard.png")
+        
+        # 看我变
+        segment_audio_path = os.path.join(assets_dir, "evolution.flac")
+        segment_probe_cmd = [
+            "ffprobe", "-v", "error", "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1", segment_audio_path
+        ]
+        segment_audio_duration = float(subprocess.run(segment_probe_cmd, capture_output=True, text=True).stdout.strip())
 
         # 前1s + 音频 + 后1s
-        total_duration = audio_duration + 2
+        total_duration = segment_audio_duration + audio_duration + 2
+        
+        final_audio_path = os.path.join(self.temp_dir, "evolution_final_audio.flac")
+        
+        if os.path.exists(final_audio_path):
+            print(f"⚠️ Final audio already exists, skipping audio concatenation")
+        else:        
+            silence_1s = os.path.join(assets_dir, "1_s.flac")
+            
+            concat_parts = [
+                "-i", segment_audio_path,
+                "-i", silence_1s,
+                "-i", audio_path,
+                "-i", silence_1s,
+            ]
+            
+            filter_complex = f"concat=n={int(len(concat_parts) / 2)}:v=0:a=1[out]"
+            subprocess.run([
+                "ffmpeg", "-y",
+                *concat_parts,
+                "-filter_complex", filter_complex,
+                "-map", "[out]",
+                "-ar", "44100",
+                final_audio_path
+            ], check=True, capture_output=True)
 
         # 视频区域
         video_size = 300
@@ -858,7 +897,7 @@ class HanziPipeline:
         glyph_types = list(glyph_png_paths.keys())
         glyph_len = len(glyph_types)
 
-        content_start = 1.0
+        content_start = segment_audio_duration + 1.0
         content_end = total_duration - 1.0
         content_duration = content_end - content_start
 
@@ -885,16 +924,14 @@ class HanziPipeline:
 
         # 视频
         filter_parts.append(
-            f"[1:v]"
-            f"scale={video_size}:{video_size}"
-            f"[video]"
+            f"[1:v]fps=25,scale={video_size}:{video_size},"
+            f"setpts=PTS+{1+segment_audio_duration}/TB[video]"
         )
 
         # 1秒后显示视频
         filter_parts.append(
             f"[bg][video]"
-            f"overlay={video_x}:{video_y}:enable='gte(t,1)'"
-            f"[v0]"
+            f"overlay={video_x}:{video_y}[v0]"
         )
 
         current_layer = "v0"
@@ -949,9 +986,9 @@ class HanziPipeline:
         # =========================
 
         # # 音频重采样
-        filter_parts.append(
-            "[2:a]aresample=44100[aout]"
-        )
+        # filter_parts.append(
+        #     "[2:a]aresample=44100[aout]"
+        # )
 
         # # 音频尾部补1秒静音
         # filter_parts.append(
@@ -975,14 +1012,14 @@ class HanziPipeline:
             "-i", video_path,
 
             # 音频
-            "-i", audio_path,
+            "-i", final_audio_path,
 
             # filter
             "-filter_complex", filter_complex,
 
             # map
             "-map", "[vout]",
-            "-map", "[aout]",
+            "-map", "2:a",
 
             # 时长
             "-t", str(total_duration),
@@ -1186,7 +1223,7 @@ class HanziPipeline:
                 glyph_png_paths = await self.download_and_convert_svg_to_png(
                     hanzi_info=hanzi_info,
                     working_dir=relate_dir,
-                    target_types=["楷书"],  # 只下载楷书
+                    # target_types=["甲骨文", "楷书"],  # 只下载楷书
                 )
                 
                 if not glyph_png_paths:
@@ -1225,7 +1262,7 @@ class HanziPipeline:
         print(f"🎬 Starting generate pinyin video for '{self.hanzi}'...")
 
         output_video_path = os.path.join(self.temp_dir, "pinyin_video.mp4")
-        
+
         if os.path.exists(output_video_path):
             print(f"⚠️ Output video already exists, skipping py video generation")
             return output_video_path
@@ -1264,6 +1301,14 @@ class HanziPipeline:
         # 计算内容时长：每个读音读两次（audio_duration+1s），中间间隔1s，多音字间隔2s
         content_duration = 2 * (num_pinyins - 1)
         
+        # 跟我读
+        segment_audio_path = os.path.join(assets_dir, "read.flac")
+        segment_probe_cmd = [
+            "ffprobe", "-v", "error", "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1", segment_audio_path
+        ]
+        segment_audio_duration = float(subprocess.run(segment_probe_cmd, capture_output=True, text=True).stdout.strip())
+        
         for audio_path in audio_paths:
             if audio_path and os.path.exists(audio_path):
                 # 使用 ffprobe 获取音频时长
@@ -1276,51 +1321,64 @@ class HanziPipeline:
                 content_duration += audio_duration + 1
         
         # 总时长 = 1s(前静止) + content_duration + 1s(后静止)
-        total_duration = 1 + content_duration + 1
+        total_duration = segment_audio_duration + 1 + content_duration + 1
         print(f"⏱️ Content duration: {content_duration}s, Total duration: {total_duration}s")
         
         # 拼接音频：每个读音读两次，每次1s，间隔1s，多音字间隔2s
-        final_audio_path = os.path.join(temp_dir, "py_final_audio.mp3")
+        final_audio_path = os.path.join(temp_dir, "py_final_audio.flac")
         
         if os.path.exists(final_audio_path):
             print(f"⚠️ Final audio already exists, skipping audio concatenation")
         else:        
             silence_1s = os.path.join(assets_dir, "1_s.flac")
             silence_2s = os.path.join(assets_dir, "2_s.flac")
-            audio_list_file = os.path.join(temp_dir, "audio_list.txt")
+            # audio_list_file = os.path.join(temp_dir, "py_audio_list.txt")
+            concat_parts = [
+                "-i", segment_audio_path,
+                "-i", silence_1s
+            ]
             
-            with open(audio_list_file, "w") as f:
-                for idx, audio_path in enumerate(audio_paths):
-                    if audio_path and os.path.exists(audio_path):
-                        # 读第一次
-                        f.write(f"file '{audio_path}'\n")
-                        # 间隔1s（静音）
-                        f.write(f"file '{silence_1s}'\n")
-                        # 读第二次
-                        f.write(f"file '{audio_path}'\n")
+            for idx, audio_path in enumerate(audio_paths):
+                if audio_path and os.path.exists(audio_path):
+                    concat_parts.extend([
+                        "-i", audio_path,
+                        "-i", silence_1s,
+                        "-i", audio_path,
+                    ])
 
-                        # 多音字间隔2s（最后一个音后面不间隔）
-                        if idx < num_pinyins - 1:
-                            f.write(f"file '{silence_2s}'\n")
-        
+                    # 多音字间隔2s（最后一个音后面不间隔）
+                    if idx < num_pinyins - 1:
+                        concat_parts.extend([
+                            "-i", silence_2s,
+                        ])
+                        
+            concat_parts.extend([
+                "-i", silence_1s
+            ])
+                        
             # 使用 ffmpeg 拼接音频
-            concat_audio_path = os.path.join(temp_dir, "py_concat.flac")
-            subprocess.run([
-                "ffmpeg", "-y", "-f", "concat", "-safe", "0",
-                "-i", audio_list_file, "-c:a", "flac", concat_audio_path
-            ], check=True)
-            
-            # 给音频前面加1s静音，使音频从1s开始播放
+            # concat_audio_path = os.path.join(temp_dir, "py_concat.flac")
+            filter_complex = f"concat=n={int(len(concat_parts) / 2)}:v=0:a=1[out]"
             subprocess.run([
                 "ffmpeg", "-y",
-                "-i", silence_1s,
-                "-i", concat_audio_path,
-                "-i", silence_1s,
-                "-filter_complex", "concat=n=3:v=0:a=1[out]",
+                *concat_parts,
+                "-filter_complex", filter_complex,
                 "-map", "[out]",
                 "-ar", "44100",
                 final_audio_path
             ], check=True, capture_output=True)
+            
+            # # 给音频前面加1s静音，使音频从1s开始播放
+            # subprocess.run([
+            #     "ffmpeg", "-y",
+            #     "-i", silence_1s,
+            #     "-i", concat_audio_path,
+            #     "-i", silence_1s,
+            #     "-filter_complex", "concat=n=3:v=0:a=1[out]",
+            #     "-map", "[out]",
+            #     "-ar", "44100",
+            #     final_audio_path
+            # ], check=True, capture_output=True)
         
         # 构建 ffmpeg 视频合成命令
         # 视频尺寸
@@ -1334,7 +1392,7 @@ class HanziPipeline:
         # 计算每个拼音的显示时间
         # 每个读音读两次，中间间隔1s
         pinyin_times = []  # [(start, end), ...]
-        current_time = 1.0  # 从1s开始
+        current_time = segment_audio_duration + 1.0  # 从1s开始
         
         for idx, audio_duration in enumerate(audio_durations):
             # 读两次 + 中间间隔1s
@@ -1471,15 +1529,23 @@ class HanziPipeline:
         except (ValueError, subprocess.CalledProcessError):
             print(f"⚠️ Failed to get gif duration, using default 3s")
             gif_duration = 3.0
+            
+        # 跟我写
+        segment_audio_path = os.path.join(assets_dir, "write.flac")
+        segment_probe_cmd = [
+            "ffprobe", "-v", "error", "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1", segment_audio_path
+        ]
+        segment_audio_duration = float(subprocess.run(segment_probe_cmd, capture_output=True, text=True).stdout.strip())
         
         # 总时长 = 1s(前静止) + gif_duration + 1s(后静止)
-        total_duration = 1 + gif_duration + 1
+        total_duration = segment_audio_duration + 1 + gif_duration + 1
         print(f"⏱️ Gif duration: {gif_duration}s, Total duration: {total_duration}s")
         
         # 生成音频
-        stroke_audio_path = os.path.join(self.temp_dir, "stroke_audio.flac")
+        final_audio_path = os.path.join(self.temp_dir, "stroke_final_audio.flac")
         
-        if os.path.exists(stroke_audio_path):
+        if os.path.exists(final_audio_path):
             print(f"🚀 Skipped generating stroke audio, already exists")
         else:
             # 使用 chat_model 生成笔画顺序文本
@@ -1503,12 +1569,52 @@ class HanziPipeline:
                 # 如果没有生成文字，使用默认文字
                 stroke_order_text = f"汉字{self.hanzi}"
             
+            stroke_audio_path = os.path.join(self.temp_dir, "stroke_audio.flac")
             audio_output = await self.audio_generator.generate_single_audio(
                 prompt=stroke_order_text,
                 character="旁白"
             )
             audio_output.save(stroke_audio_path)
             print(f"✅ Generated stroke audio: {stroke_audio_path}")
+            
+            # 获取音频时长
+            audio_probe_cmd = [
+                "ffprobe", "-v", "error", "-show_entries", "format=duration",
+                "-of", "default=noprint_wrappers=1:nokey=1", stroke_audio_path
+            ]
+            audio_duration = float(subprocess.run(audio_probe_cmd, capture_output=True, text=True).stdout.strip())
+            print(f"⏱️ Stroke audio duration: {audio_duration}s, Target duration: {gif_duration}s")
+            
+            # 将音频时长调整得跟 gif 时长一致
+            # 使用 atempo 调整播放速度
+            tempo_ratio = audio_duration / gif_duration
+            adjusted_stroke_audio_path = os.path.join(self.temp_dir, "stroke_audio_adjusted.flac")
+            subprocess.run([
+                "ffmpeg", "-y", "-i", stroke_audio_path,
+                "-filter:a", f"atempo={tempo_ratio}",
+                adjusted_stroke_audio_path
+            ], check=True, capture_output=True)
+            stroke_audio_path = adjusted_stroke_audio_path
+            
+            silence_1s = os.path.join(assets_dir, "1_s.flac")
+            
+            concat_parts = [
+                "-i", segment_audio_path,
+                "-i", silence_1s,
+                "-i", stroke_audio_path,
+                "-i", silence_1s,
+            ]
+        
+            # 使用 ffmpeg 拼接音频
+            filter_complex = f"concat=n={int(len(concat_parts) / 2)}:v=0:a=1[out]"
+            subprocess.run([
+                "ffmpeg", "-y",
+                *concat_parts,
+                "-filter_complex", filter_complex,
+                "-map", "[out]",
+                "-ar", "44100",
+                final_audio_path
+            ], check=True, capture_output=True)
             
         # 资源路径
         blackboard_path = os.path.join(assets_dir, "blackboard.png")
@@ -1536,14 +1642,15 @@ class HanziPipeline:
             "-filter_complex", (
                 f"[0:v]scale={video_width}:{video_height}:force_original_aspect_ratio=increase,crop={video_width}:{video_height}[bg];"
                 f"[1:v]scale={grid_size}:{grid_size}[mi_grid];"
-                f"[2:v]fps=25,scale={grid_size}:{grid_size}[gif];"
+                f"[2:v]fps=25,scale={grid_size}:{grid_size},"
+                f"setpts=PTS+{1+segment_audio_duration}/TB[gif];"
                 f"[bg][mi_grid]overlay={grid_x}:{grid_y}[bg_with_grid];"
-                f"[bg_with_grid][gif]overlay={grid_x}:{grid_y}:enable='between(t,1,1+{gif_duration})'[video]"
+                f"[bg_with_grid][gif]overlay={grid_x}:{grid_y}[video]"
             ),
-            "-i", stroke_audio_path,
-            "-filter_complex", "[3:a]adelay=1000|1000[a_delayed]",
+            "-i", final_audio_path,
+            # "-filter_complex", "[3:a]adelay=1000|1000[a_delayed]",
             "-map", "[video]",
-            "-map", "[a_delayed]",
+            "-map", "3:a",
             "-t", str(total_duration),
             "-c:v", "libx264", "-preset", "medium",
             "-c:a", "aac", "-b:a", "192k",
@@ -1723,8 +1830,10 @@ class HanziPipeline:
         
         if self.check_interrupt("idea"):
             return ""
+        
+        final_video_path = ""
 
-        # Step4: 生成拼音视频
+        # # Step4: 生成拼音视频
         py_video_path = await self.generate_py_video(hanzi_info, glyph_png_paths)
 
         # Step5: 生成笔画视频
