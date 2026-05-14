@@ -279,7 +279,11 @@ class ComfyUIWorkflowRunner:
                 # 没有新任务，继续循环检查是否应该退出
                 continue
             except asyncio.CancelledError:
-                logger.info("全局队列工作器被取消")
+                # 获取更多取消上下文信息
+                import traceback
+                cancel_trace = traceback.format_stack()
+                logger.warning(f"全局队列工作器被取消。堆栈信息: {''.join(cancel_trace[-5:])}")
+                _global_is_running = False
                 break
             except Exception as e:
                 logger.error(f"队列处理异常: {e}")
@@ -447,7 +451,7 @@ class ComfyUIWorkflowRunner:
             await asyncio.sleep(0.5)
             if ws_connect_time and time.time() - ws_connect_time > timeout:
                 result_holder["finished"] = True
-                result_holder["error"] = "Timeout waiting for workflow completion"
+                result_holder["error"] = f"Timeout waiting for workflow completion:: {timeout}s"
         
         ws_thread.join(timeout=5)
         
