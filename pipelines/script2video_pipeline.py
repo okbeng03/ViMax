@@ -306,8 +306,16 @@ class Script2VideoPipeline:
             if camera.parent_shot_idx is not None:
                 # generate the first_frame based on the transition video
                 parent_shot_idx = camera.parent_shot_idx
-                await self.frame_events[parent_shot_idx]["first_frame"].wait()
-                parent_shot_ff_path = os.path.join(self.working_dir, "shots", f"{parent_shot_idx}", "first_frame.png")
+                parent_shot = shot_descriptions[parent_shot_idx]
+                variation_type = parent_shot.variation_type
+                
+                if variation_type in ["medium", "large"]:
+                    await self.frame_events[parent_shot_idx]["last_frame"].wait()
+                    parent_shot_ff_path = os.path.join(self.working_dir, "shots", f"{parent_shot_idx}", "last_frame.png")
+                else:
+                    await self.frame_events[parent_shot_idx]["first_frame"].wait()
+                    parent_shot_ff_path = os.path.join(self.working_dir, "shots", f"{parent_shot_idx}", "first_frame.png")
+                
                 transition_video_path = os.path.join(self.working_dir, "shots", f"{first_shot_idx}", f"transition_video_from_shot_{parent_shot_idx}.mp4")
 
                 if os.path.exists(transition_video_path):
@@ -315,8 +323,9 @@ class Script2VideoPipeline:
                 else:
                     print(f"🖼️ Starting transition video generation for shot {first_shot_idx} from shot {parent_shot_idx}...")
                     # 基于父级的首帧生成视频。从父级到首帧描述的过渡？
+                    
                     transition_video_output = await self.camera_image_generator.generate_transition_video(
-                        first_shot_visual_desc=shot_descriptions[parent_shot_idx].visual_desc,
+                        first_shot_visual_desc=parent_shot.visual_desc,
                         second_shot_visual_desc=shot_descriptions[first_shot_idx].visual_desc,
                         first_shot_ff_path=parent_shot_ff_path,
                     )
@@ -518,6 +527,7 @@ class Script2VideoPipeline:
                             audio_output = await self.audio_generator.generate_single_audio(
                                 prompt=dialogue.dialogue,
                                 character=dialogue.speaker,
+                                gender=dialogue.gender,
                             )
                             audio_output.save(os.path.join(parent_path, f"{idx}.flac"))
                             
@@ -541,6 +551,7 @@ class Script2VideoPipeline:
                 reference_image_paths=frame_paths,
                 audio_path=dialogue_audio_path,
                 duration=int(shot_description.shot_duration or 5.0),
+                use_xianxia_lora=shot_description_with_dialogues.use_xianxia_lora,
             )
             video_output.save(video_path)
             print(f"☑️ Generated video for shot {shot_description.idx}, saved to {video_path}.")
@@ -884,6 +895,7 @@ class Script2VideoPipeline:
                 
                 if os.path.exists(ltx_prompt_path):
                     with open(ltx_prompt_path, 'r', encoding='utf-8') as f:
+                        print(f"Reading ltx_prompt.json for shot {shot.idx}")
                         ltx_prompt = json.load(f)
                         if ltx_prompt.get("dialogues"):
                             dialogues = [Dialogue.model_validate(d) for d in ltx_prompt["dialogues"]]
@@ -940,7 +952,7 @@ class Script2VideoPipeline:
                     visual_desc=shot.visual_desc,
                     audio_desc=shot.audio_desc or ""
                 ))
-            
+
             # 2. 调用 NarrationAgent.generate_narration 生成旁白
             narration_desc = await self.narration_agent.generate_narration(
                 story=script,
