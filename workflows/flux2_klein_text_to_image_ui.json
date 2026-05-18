@@ -228,8 +228,8 @@
         "",
         1024,
         1024,
-        "flux-2-klein-base-4b.safetensors",
-        "qwen_3_4b.safetensors",
+        "flux-2-klein-9b.safetensors",
+        "qwen_3_8b.safetensors",
         "flux2-vae.safetensors"
       ]
     },
@@ -882,7 +882,7 @@
               "secondTabWidth": 65
             },
             "widgets_values": [
-              ""
+              "text, subtitle, caption, watermark, signature, username, logo, worst quality, low quality, blurry, jpeg artifacts"
             ],
             "color": "#322",
             "bgcolor": "#533"
@@ -1092,7 +1092,7 @@
               "secondTabWidth": 65
             },
             "widgets_values": [
-              "flux-2-klein-base-4b.safetensors",
+              "flux-2-klein-9b.safetensors",
               "default"
             ]
           },
@@ -2139,7 +2139,7 @@
               "secondTabWidth": 65
             },
             "widgets_values": [
-              "qwen_3_4b.safetensors",
+              "qwen_3_8b.safetensors",
               "flux2",
               "default"
             ]

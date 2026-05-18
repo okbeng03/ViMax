@@ -675,7 +675,14 @@
           "input_ue_unconnectable": {}
         }
       },
-      "widgets_values": []
+      "widgets_values": [
+        "flux-2-klein-9b.safetensors",
+        "qwen_3_8b.safetensors",
+        "flux2-vae.safetensors",
+        "",
+        1024,
+        1024
+      ]
     }
   ],
   "links": [
@@ -1208,7 +1215,7 @@
               }
             },
             "widgets_values": [
-              "flux-2-klein-base-4b-fp8.safetensors",
+              "flux-2-klein-9b.safetensors",
               "default"
             ]
           },
@@ -1254,7 +1261,7 @@
               "Node name for S&R": "CLIPLoader",
               "models": [
                 {
-                  "name": "qwen_3_4b.safetensors",
+                  "name": "qwen_3_8b.safetensors",
                   "url": "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/text_encoders/qwen_3_4b.safetensors",
                   "directory": "text_encoders"
                 }
@@ -1273,7 +1280,7 @@
               }
             },
             "widgets_values": [
-              "qwen_3_4b.safetensors",
+              "qwen_3_8b.safetensors",
               "flux2",
               "default"
             ]
@@ -1685,7 +1692,7 @@
               }
             },
             "widgets_values": [
-              ""
+              "text, subtitle, caption, watermark, signature, username, logo, worst quality, low quality, blurry, jpeg artifacts"
             ],
             "color": "#323",
             "bgcolor": "#535"
@@ -3520,7 +3527,7 @@
               }
             },
             "widgets_values": [
-              760
+              1440
             ]
           },
           {
@@ -3571,7 +3578,7 @@
               }
             },
             "widgets_values": [
-              1280
+              2560
             ]
           }
         ],

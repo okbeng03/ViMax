@@ -237,7 +237,7 @@
   },
   "92:87": {
     "inputs": {
-      "text": "",
+      "text": "text, subtitle, caption, watermark, signature, username, logo, worst quality, low quality, blurry, jpeg artifacts",
       "clip": [
         "92:111",
         0

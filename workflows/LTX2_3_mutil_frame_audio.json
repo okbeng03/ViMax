@@ -130,7 +130,7 @@
   },
   "607": {
     "inputs": {
-      "text": "text, words, letters, signature, watermark, logo, subtitles, captions, credits, typography, font, static text, scrolling text, date, time, timer, counter, framing, border, letterbox, black bars, overlay, graphical interface, UI, HUD, menu, low quality, worst quality, blurry, blurry image, blurry video, compression artifacts, glitch, static noise, noise, distorted, warped, bad anatomy, low resolution, overexposed, underexposed, flicker, unstable motion, ghosting, double exposure, drawing, cartoon, anime effects (the text version).",
+      "text": "text, words, letters, signature, watermark, logo, subtitles, captions, credits, typography, font, static text, scrolling text, date, time, timer, counter, framing, border, letterbox, black bars, overlay, graphical interface, UI, HUD, menu, low quality, worst quality, blurry, blurry image, blurry video, compression artifacts, glitch, static noise, noise, distorted, warped, bad anatomy, low resolution, overexposed, underexposed, flicker, unstable motion, ghosting, double exposure, drawing, cartoon, anime effects (the text version), extra person, multiple people, background people, crowd, extra limbs, partial body, cropped person, duplicate body, extra legs, extra arms, human silhouette, person at edge",
       "clip": [
         "606",
         0
@@ -753,7 +753,7 @@
   "725": {
     "inputs": {
       "lora_name": "仙侠风格.safetensors",
-      "strength_model": 1,
+      "strength_model": 0.8,
       "model": [
         "610",
         0
