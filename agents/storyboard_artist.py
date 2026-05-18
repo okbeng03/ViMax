@@ -94,12 +94,15 @@ Important:
 - Chinese characters are also characters: If a Chinese character is included in the character list, it should also be included as a character in the visual description. If the character "日" appears in the character list, it should be changed to <日字>.
 - When describing visual elements, it is necessary to indicate the position of the element within the frame. For example, Character A is on the left side of the frame, facing toward the right, with a table in front of him. The table is positioned slightly to the left of the center of the frame. Ensure that invisible elements are not included. For instance, do not describe someone behind a closed door if they cannot be seen.
 - Avoid unsafe content (violence, discrimination, etc.) in visual descriptions. Use indirect methods like sound or suggestive imagery when needed, and substitute sensitive elements (e.g., ketchup for blood).
+- When describing a character, descriptions of the static features (such as facial features and body shape) and dynamic features (such as clothing and accessories) of the character should be included
 - Assign at most one dialogue line per character per shot. Each line of dialogue should correspond to a shot.
 - Each shot requires an independent description without reference to each other.
 - When the shot focuses on a character, describe which specific body part the focus is on.
 - When describing a character, it is necessary to indicate the direction they are facing.
 - **Location consistency**: Ensure the generated shot locations match the script's setting. Do not introduce indoor elements (e.g., desks, bookshelves) when the scene takes place outdoors, and vice versa. The background elements must strictly adhere to the script's described environment.
+- Time consistency: Unless otherwise specified, keep the lens time matching the script Settings to ensure light consistency. If it is outdoors at night, the deep blue night sky spreads out, and the ambient light is soft and quiet. It must be consistent and not be missing, resulting in daytime light.
 - **Long dialogue splitting**: If a single line of dialogue in the script contains multiple sentences whose spoken duration would exceed 8 seconds (the maximum shot duration), split that dialogue reasonably across multiple shots. In each resulting shot, assign a natural portion of the original dialogue, and ensure the visual continuity supports the split.
+- If a character not in the character list appears in the shot, describe in detail their static features (such as facial features and body shape) and dynamic features (such as clothing and accessories) according to the scene.
 """
 
 # [Action Generation Constraints - IMPORTANT]
@@ -232,12 +235,15 @@ Important:
 # - 汉字也是角色: 如果汉字包含在character列表中，那也要将其作为角色包含在视觉描述中。如"日"字如果出现在character列表，那要变成<日字>。
 # -在描述视觉元素时，有必要指出元素在框架中的位置。例如，人物A在画面的左侧，面朝右，前面有一张桌子。桌子的位置在画面中心偏左一点。确保不包含不可见的元素。例如，如果你看不见关着门的人，就不要描述他们。 
 # -避免视觉描述中的不安全内容（暴力、歧视等）。必要时使用声音或暗示性图像等间接方法，并用敏感元素代替（例如，用番茄酱代替血液）。 
+# -在描述人物时，需包含人物的静态特征(such as facial features and body shape)和动态特征(such as clothing and accessories)的描述
 # -每个角色每个镜头最多分配一条对话线。每一行对话都应该对应一个镜头。 
 # -每个镜头需要一个独立的描述，不需要相互引用。 
 # -当镜头聚焦于一个角色时，描述焦点在身体的哪个部位。
 # -当描述一个角色时，有必要指出他们面对的方向。
 # -位置一致性：确保生成的镜头位置与脚本设置相匹配。当场景发生在室外时，不要引入室内元素（如桌子、书架），反之亦然。背景元素必须严格遵守脚本所描述的环境。 
+# -时间一致性：如果未特别说明，保持镜头时间与脚本设置相匹配，保证光感一致性。如是晚上户外，深蓝色夜幕铺展，环境光线柔和静谧，那要保持一致，不能缺失后导致是白天亮光。
 # -长对话分割：如果脚本中的单行对话包含多个句子，其口语持续时间超过8秒（最大镜头持续时间），则将该对话合理地分割为多个镜头。在每个最终的镜头中，分配原始对话的自然部分，并确保视觉连续性支持分裂。
+# -如果镜头出现非角色列表中的角色，要根据场景详细描述其静态特征(such as facial features and body shape)和动态特征(such as clothing and accessories)
 
 human_prompt_template_design_storyboard = \
 """
@@ -300,6 +306,8 @@ Additionally, you will receive a sequence of potential characters, each containi
 - When describing a character, it is necessary to indicate the direction they are facing.
 - The first shot must establish the overall scene environment, using the widest possible shot.
 - Use as few camera positions as possible.
+- In the first frame, last frame, and motion descriptions, all visual details must remain physically and visually plausible. Do not describe details that are not actually visible in the frame due to occlusion, framing, distance, lighting, or being outside the camera view. 
+For example, if a character is leaning over a desk and only the upper body is visible, do not describe lower-body clothing or shoes that cannot be seen.
 """
 
 # [Role] 
@@ -337,6 +345,8 @@ Additionally, you will receive a sequence of potential characters, each containi
 # -当描述一个角色时，有必要指出他们面对的方向。 
 # -第一个镜头必须建立整个场景环境，使用尽可能宽的镜头。 
 # -使用尽可能少的相机位置。
+# -在第一帧、最后一帧和动作描述中，所有视觉细节必须在物理上和视觉上保持可信。不要描述由于遮挡、取景、距离、照明或在相机视图之外而在帧中实际上不可见的细节。
+# 例如，如果一个角色靠在桌子上，只有上半身可以看到，不要描述下半身的衣服或鞋子。
 
 human_prompt_template_decompose_visual_description = \
 """
