@@ -85,16 +85,17 @@ class Idea2VideoPipeline:
                 characters = json.load(f)
             characters = [CharacterInScene.model_validate(
                 character) for character in characters]
+            need_extra = False
             
             # 检查新角色是否存在，不存在也要创建
             if self.new_character:
                 exist_characters = [character.identifier_in_scene for character in characters]
-                
+
                 for character in self.new_character:
                     if character not in exist_characters:
                         lack_characters.append(character)
                         need_extra = True
-        
+
         if need_extra:
             characters_response = await self.character_extractor.extract_characters(story)
             
