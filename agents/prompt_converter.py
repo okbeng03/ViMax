@@ -55,8 +55,10 @@ system_prompt_template_convert_dialogue = \
 
 [Guidelines]
 - 要保持场景视觉描述的意思不发生改变
+- 描述使用中文
 - **确保最终场景描述融入音频（包含音效、对话、对话情绪）**
 - **音频融入要自然，位置要正确**: 确保融入正确的位置，不要一味的加在最后
+- 要保留人物外貌和动态特征描述（如穿着）
 - 对话融入要保留标点符号，用“”括起来
 - 确保句子之间的逻辑流畅
 - **计算对话时长**：按对话语速 4.5 字/秒 （含自然停顿）来计算
@@ -82,6 +84,7 @@ human_prompt_template_convert_dialogue = \
 
 class Dialogue(BaseModel):
     speaker: str = Field(..., description="对话者名称")
+    gender: Optional[str] = Field(default="Female", description="对话者性别。 枚举 Male、Female")
     emotion: str = Field(..., description="对话者情绪")
     dialogue: str = Field(..., description="对话内容")
     start_time: float = Field(..., description="对话开始时间（秒）")
@@ -91,6 +94,7 @@ class ShotDescriptionWithDialogues(BaseModel):
     prompt: str = Field(..., description="融入音效的场景视觉描述")
     dialogues: Optional[List[Dialogue]] = Field(default=[], description="对话列表")
     shot_duration: Optional[float] = Field(..., description="镜头时长（秒）")
+    use_xianxia_lora: Optional[bool] = Field(default=False, description="是否使用仙侠lora。如果有对话，请设置为True")
 
 class PromptConverter:
     """
