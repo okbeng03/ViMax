@@ -44,6 +44,7 @@ class WorkflowTask:
     workflow: dict[str, Any]
     output_node_ids: list[int | str]
     timeout: int
+    ui_workflow: dict[str, Any] | None = None
     future: asyncio.Future[Any] | None = None
     
     def __post_init__(self):
@@ -196,7 +197,9 @@ class ComfyUIWorkflowRunner:
         workflow_path: str,
         workflow: dict[str, Any],
         output_node_ids: List[int | str],
-        timeout: int = 1000
+        *,
+        timeout: int = 1000,
+        ui_workflow: dict[str, Any] | None = None,
     ) -> dict[int | str, Any]:
         """
         执行工作流（加入全局队列，顺序执行）
@@ -222,6 +225,7 @@ class ComfyUIWorkflowRunner:
         task = WorkflowTask(
             workflow_path=workflow_path,
             workflow=workflow,
+            ui_workflow=ui_workflow,
             output_node_ids=output_node_ids,
             timeout=timeout,
         )
@@ -259,7 +263,7 @@ class ComfyUIWorkflowRunner:
                 
                 # 执行工作流
                 try:
-                    result = await self._execute_workflow(task.workflow, task.timeout)
+                    result = await self._execute_workflow(task)
                     assert task.future is not None
                     task.future.set_result(result)
                 except Exception as e:
@@ -310,21 +314,24 @@ class ComfyUIWorkflowRunner:
         queue = _get_global_queue()
         return queue.qsize()
     
-    async def _execute_workflow(self, workflow: dict[str, Any], timeout: int) -> dict[int | str, Any]:
+    async def _execute_workflow(self, task: WorkflowTask) -> dict[int | str, Any]:
         """执行工作流"""
 
         # 记录工作流开始执行时间
         workflow_start_time = time.time()
-        prompt_id = await self._queue_prompt(workflow)
-        logger.info(f"Comfyui Queued prompt: {prompt_id}. 开始时间: {workflow_start_time}")
-        # TODO:: 配置化
+        prompt_id = await self._queue_prompt(task.workflow)
+        logger.info(f"Comfyui Queued prompt: {prompt_id}. 开始时间: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(workflow_start_time))}")
         workflow_path = os.path.join(f"{working_dir}/workflows", f"{prompt_id}.json")
         
         with open(workflow_path, 'w', encoding='utf-8') as f:
-            f.write(json.dumps(workflow, ensure_ascii=False, indent=4))
+            f.write(json.dumps(task.workflow, ensure_ascii=False, indent=4))
+            
+        if task.ui_workflow:
+            with open(os.path.join(f"{working_dir}/workflows", f"{prompt_id}_ui.json"), 'w', encoding='utf-8') as f:
+                f.write(json.dumps(task.ui_workflow, ensure_ascii=False, indent=4))
         
         # 等待执行完成，传入开始时间用于计算耗时
-        outputs = await self._wait_for_outputs(prompt_id, timeout, workflow_start_time)
+        outputs = await self._wait_for_outputs(prompt_id, task.timeout, workflow_start_time)
         
         return outputs
     
@@ -347,7 +354,7 @@ class ComfyUIWorkflowRunner:
                 result = await response.json()
                 return result["prompt_id"]
     
-    async def _wait_for_outputs(self, prompt_id: str, timeout: int, workflow_start_time: float | None = None) -> dict[int | str, Any]:
+    async def _wait_for_outputs(self, prompt_id: str, timeout: int, workflow_start_time) -> dict[int | str, Any]:
         """
         等待并获取输出
         
@@ -385,9 +392,6 @@ class ComfyUIWorkflowRunner:
                         if isinstance(message, bytes):
                             continue
                         
-                        if not ws_connect_time:
-                            ws_connect_time = time.time()
-                        
                         data = json.loads(message)
                         msg_type = data.get("type")
                         msg_data = data.get("data", {})
@@ -405,6 +409,9 @@ class ComfyUIWorkflowRunner:
                             value = msg_data.get("value", 0)
                             max_val = msg_data.get("max", 100)
                             logger.info(f"进度：{value}/{max_val}")
+                            
+                            if not ws_connect_time:
+                                ws_connect_time = time.time()
                         
                         # 处理执行完成
                         elif msg_type == "executed":
@@ -434,6 +441,7 @@ class ComfyUIWorkflowRunner:
                         if all(oid in outputs for oid in normalized_output_ids):
                             result_holder["outputs"] = {oid: outputs[oid] for oid in normalized_output_ids}
                             result_holder["finished"] = True
+                            logger.info(f"Prompt {prompt_id} 执行完成。结束时间: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()))}")
                             break
                             
             except Exception as e:
@@ -451,7 +459,7 @@ class ComfyUIWorkflowRunner:
             await asyncio.sleep(0.5)
             if ws_connect_time and time.time() - ws_connect_time > timeout:
                 result_holder["finished"] = True
-                result_holder["error"] = f"Timeout waiting for workflow completion:: {timeout}s"
+                result_holder["error"] = f"Timeout waiting for workflow completion:: {timeout}s。结束时间: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()))}"
         
         ws_thread.join(timeout=5)
         

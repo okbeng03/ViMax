@@ -33,8 +33,11 @@ from utils.rate_limiter import RateLimiter
 logger = logging.getLogger(__name__)
 
 text_to_image_workflow_path = "workflows/flux2_klein_text_to_image.json"
+text_to_image_ui_workflow_path = "workflows/flux2_klein_text_to_image_ui.json"
 image_to_image_workflow_path = "workflows/flux2_klein_8image.json"
+image_to_image_ui_workflow_path = "workflows/flux2_klein_8image_ui.json"
 qwen_image_edit_workflow_path = "workflows/qwen_image_edit.json"
+qwen_image_edit_ui_workflow_path = "workflows/qwen_image_edit_ui.json"
 text_to_image_output_node_ids = ["9"]
 image_to_image_output_node_ids = ["94"]
 qwen_image_edit_output_node_ids = ["14"]
@@ -89,8 +92,20 @@ class ImageGeneratorComfyUIFlux:
         image2 = reference_image_paths[1]
         image2_name = await runner.upload_image(image2)
         workflow["11"]["inputs"]["image"] = image2_name
-
-        return workflow
+        
+        # ui
+        ui_workflow = runner.load_workflow(qwen_image_edit_ui_workflow_path)
+        nodes = ui_workflow["nodes"]
+        output_node = next((node for node in nodes if node["id"] == 14), None)
+        output_node["widgets_values"][0] = str(uuid.uuid4())
+        positive_node = next((node for node in nodes if node["id"] == 8), None)
+        positive_node["widgets_values"][0] = prompt
+        scale_node = next((node for node in nodes if node["id"] == 22), None)
+        scale_node["widgets_values"][7] = width
+        noise_node = next((node for node in nodes if node["id"] == 7), None)
+        noise_node["widgets_values"][0] = random.randint(1, max_noise)
+        
+        return workflow, ui_workflow
     
     
     async def load_t2i_workflow(self, runner: ComfyUIWorkflowRunner, prompt: str, width: int, height: int) -> dict[str, Any]:
@@ -103,7 +118,21 @@ class ImageGeneratorComfyUIFlux:
         workflow["75:69"]["inputs"]["value"] = height
         workflow["75:73"]["inputs"]["noise_seed"] = random.randint(1, max_noise)
         
-        return workflow
+        # ui
+        ui_workflow = runner.load_workflow(text_to_image_ui_workflow_path)
+        nodes = ui_workflow["nodes"]
+        output_node = next((node for node in nodes if node["id"] == 9), None)
+        output_node["widgets_values"][0] = str(uuid.uuid4())
+        positive_node = next((node for node in nodes if node["id"] == 76), None)
+        positive_node["widgets_values"][0] = prompt
+        
+        subgraph_nodes = ui_workflow["definitions"]["subgraphs"][0]["nodes"]
+        width_node = next((node for node in subgraph_nodes if node["id"] == 68), None)
+        width_node["widgets_values"][0] = width
+        height_node = next((node for node in subgraph_nodes if node["id"] == 69), None)
+        height_node["widgets_values"][0] = height
+        
+        return workflow, ui_workflow
     
     async def load_i2i_workflow(self, runner: ComfyUIWorkflowRunner, prompt: str, reference_image_paths: List[str] = None, width: int = 2048, height: int = 2048) -> dict[str, Any]:
         """加载图生图工作流"""
@@ -186,8 +215,35 @@ class ImageGeneratorComfyUIFlux:
             
         workflow["92:114"]["inputs"]["positive"] = [retain_group_image_nodes[-1]["positive_latent"], 0]
         workflow["92:114"]["inputs"]["negative"] = [retain_group_image_nodes[-1]["negative_latent"], 0]
+        
+        #  ui
+        ui_workflow = runner.load_workflow(image_to_image_ui_workflow_path)
+        nodes = ui_workflow["nodes"]
+        output_node = next((node for node in nodes if node["id"] == 94), None)
+        output_node["widgets_values"][0] = str(uuid.uuid4())
+        
+        for i, _ in enumerate(reference_image_paths):
+            image_node = next((node for node in nodes if node["id"] == int(load_image_nodes[i])), None)
+            image_node["widgets_values"][0] = workflow[load_image_nodes[i]]["inputs"]["image"]
+            
+        for node_id in remove_image_nodes:
+            image_node = next((node for node in nodes if node["id"] == int(node_id)), None)
+            image_node["mode"] = 4
+        
+        subgraph_nodes = ui_workflow["definitions"]["subgraphs"][0]["nodes"]
+        width_node = next((node for node in subgraph_nodes if node["id"] == 199), None)
+        width_node["widgets_values"][0] = width
+        height_node = next((node for node in subgraph_nodes if node["id"] == 197), None)
+        height_node["widgets_values"][0] = height
+        prompt_node = next((node for node in subgraph_nodes if node["id"] == 113), None)
+        prompt_node["widgets_values"][0] = prompt        
+        for group in remove_group_image_nodes:
+            for group_id in group.values():
+                node_id = group_id.split(":")[1]
+                remove_node = next((node for node in subgraph_nodes if node["id"] == int(node_id)), None)
+                remove_node["mode"] = 4
 
-        return workflow
+        return workflow, ui_workflow
     
     async def generate_single_image(
         self,
@@ -223,19 +279,20 @@ class ImageGeneratorComfyUIFlux:
         
         if workflow_name == "qwen_edit":
             logger.info("==========Using Qwen edit workflow================")
-            workflow = await self.load_qwen_edit_workflow(runner=runner, prompt=prompt, reference_image_paths=reference_image_paths, width=width, height=height)
+            workflow, ui_workflow = await self.load_qwen_edit_workflow(runner=runner, prompt=prompt, reference_image_paths=reference_image_paths, width=width, height=height)
         else:
             if reference_image_paths:
                 logger.info("==========Using reference images for style consistency================")
-                workflow = await self.load_i2i_workflow(runner=runner, prompt=prompt, reference_image_paths=reference_image_paths, width=width, height=height)
+                workflow, ui_workflow = await self.load_i2i_workflow(runner=runner, prompt=prompt, reference_image_paths=reference_image_paths, width=width, height=height)
             else:
-                workflow = await self.load_t2i_workflow(runner=runner, prompt=prompt, width=width, height=height)
+                workflow, ui_workflow = await self.load_t2i_workflow(runner=runner, prompt=prompt, width=width, height=height)
         # print("========================\n", json.dumps(workflow, indent=4), "\n========================")
         # 执行工作流
         outputs = await runner.run(
             workflow_path=image_to_image_workflow_path if reference_image_paths else text_to_image_workflow_path,
             workflow=workflow,
             output_node_ids=image_to_image_output_node_ids if reference_image_paths else text_to_image_output_node_ids,
+            ui_workflow=ui_workflow,
         )
         # 提取输出路径
         output_paths = runner.get_output_paths(outputs)

@@ -38,7 +38,9 @@ from utils.rate_limiter import RateLimiter
 logger = logging.getLogger(__name__)
 
 first_frame_workflow_path = "workflows/LTX2_3_first_frame_audio.json"
+first_frame_ui_workflow_path = "workflows/LTX2_3_first_frame_audio_ui.json"
 mutil_frame_workflow_path = "workflows/LTX2_3_mutil_frame_audio.json"
+mutil_frame_ui_workflow_path = "workflows/LTX2_3_mutil_frame_audio_ui.json"
 first_frame_output_node_ids = ["75"]
 mutil_frame_output_node_ids = ["649"]
 mutil_sigmas = {
@@ -97,16 +99,18 @@ class VideoGeneratorComfyUILTX:
         fps: Literal[16, 24] = 16,
         duration: Literal[5, 10] = 5,
         audio_name: Optional[str] = None,
+        use_xianxia_lora: bool = False,
     ) -> dict[str, Any]:
         """
         加载首帧工作流
         """
         
         workflow = runner.load_workflow(first_frame_workflow_path)
-        workflow["75"]["inputs"]["filename_prefix"] = str(uuid.uuid4())
         image_name = await runner.upload_image(reference_image_paths[0])
-        workflow["269"]["inputs"]["image"] = image_name
         noise_seed = random.randint(1, max_noise)
+        
+        workflow["75"]["inputs"]["filename_prefix"] = str(uuid.uuid4())
+        workflow["269"]["inputs"]["image"] = image_name
         # workflow["270"]["inputs"]["noise_seed"] = noise_seed
         workflow["271"]["inputs"]["noise_seed"] = noise_seed
         workflow["294"]["inputs"]["value"] = fps
@@ -115,7 +119,8 @@ class VideoGeneratorComfyUILTX:
         workflow["316"]["inputs"]["aspect_ratio"] = aspect_ratio
         
         # 如果是生成场景切换视频，因为缺少角色参考，会生成仙侠风任务。去掉该lora
-        if prompt.startswith("Two shots. The transition between the shots is a cut to. The style of the two shots should be consistent."):
+        # if prompt.startswith("Two shots. The transition between the shots is a cut to. The style of the two shots should be consistent."):
+        if not use_xianxia_lora:
             workflow["338"]["inputs"]["model"] = ["279", 0]
         
         if audio_name:
@@ -124,8 +129,42 @@ class VideoGeneratorComfyUILTX:
         else:
             # 没有音频，直接连接采样输出的audio
             workflow["304"]["inputs"]["audio"] = ["291", 0]
+            
+        # ui
+        ui_workflow = runner.load_workflow(first_frame_ui_workflow_path)
+        nodes = ui_workflow["nodes"]
+        output_node = next((node for node in nodes if node["id"] == 75), None)
+        output_node["widgets_values"][0] = str(uuid.uuid4())
+        image_node = next((node for node in nodes if node["id"] == 269), None)
+        image_node["widgets_values"][0] = image_name
+        # workflow["270"]["inputs"]["noise_seed"] = noise_seed
+        noise_node = next((node for node in nodes if node["id"] == 271), None)
+        noise_node["widgets_values"][0] = noise_seed
+        fps_node = next((node for node in nodes if node["id"] == 294), None)
+        fps_node["widgets_values"][0] = fps
+        positive_node = next((node for node in nodes if node["id"] == 313), None)
+        positive_node["widgets_values"][0] = prompt
+        duration_node = next((node for node in nodes if node["id"] == 314), None)
+        duration_node["widgets_values"][0] = duration
+        scale_node = next((node for node in nodes if node["id"] == 316), None)
+        scale_node["widgets_values"][0] = aspect_ratio
         
-        return workflow
+        # 如果是生成场景切换视频，因为缺少角色参考，会生成仙侠风任务。去掉该lora
+        # if prompt.startswith("Two shots. The transition between the shots is a cut to. The style of the two shots should be consistent."):
+        if not use_xianxia_lora:
+            xianxia_node = next((node for node in nodes if node["id"] == 337), None)
+            xianxia_node["mode"] = 4
+        
+        if audio_name:
+            # 替换音频
+            tts_node = next((node for node in nodes if node["id"] == 318), None)
+            tts_node["widgets_values"][0] = audio_name
+        # else:
+        #     # 没有音频，直接连接采样输出的audio
+        #     ui_workflow["304"]["inputs"]["audio"] = ["291", 0]
+        # 改连接太麻烦了。暂时不处理
+        
+        return workflow, ui_workflow
     
     async def load_mutil_frame_workflow(
         self, 
@@ -137,6 +176,7 @@ class VideoGeneratorComfyUILTX:
         fps: Literal[16, 24] = 16,
         duration: Literal[5, 10] = 5,
         audio_name: Optional[str] = None,
+        use_xianxia_lora: bool = False,
     ) -> dict[str, Any]:
         """
         加载多帧工作流
@@ -152,6 +192,9 @@ class VideoGeneratorComfyUILTX:
         workflow["672"]["inputs"]["text"] = prompt
         workflow["673"]["inputs"]["value"] = duration
         workflow["700"]["inputs"]["aspect_ratio"] = aspect_ratio
+        
+        if not use_xianxia_lora:
+            workflow["605"]["inputs"]["model"] = ["610", 0]
         
         if audio_name:
             # 替换音频
@@ -211,8 +254,39 @@ class VideoGeneratorComfyUILTX:
         workflow[last_frame_addguide]["inputs"]["positive"] = [prev_frame_addguide_node_id, 0]
         workflow[last_frame_addguide]["inputs"]["negative"] = [prev_frame_addguide_node_id, 1]
         workflow[last_frame_addguide]["inputs"]["latent"] = [prev_frame_addguide_node_id, 2]
+        
+        # ui
+        ui_workflow = runner.load_workflow(mutil_frame_ui_workflow_path)
+        nodes = ui_workflow["nodes"]
+        output_node = next((node for node in nodes if node["id"] == 649), None)
+        output_node["widgets_values"]["filename_prefix"] = str(uuid.uuid4())
+        noise_node = next((node for node in nodes if node["id"] == 636), None)
+        noise_node["widgets_values"][0] = noise_seed
+        fps_node = next((node for node in nodes if node["id"] == 625), None)
+        fps_node["widgets_values"][0] = fps
+        fps_float_node = next((node for node in nodes if node["id"] == 627), None)
+        fps_float_node["widgets_values"][0] = float(fps)
+        positive_node = next((node for node in nodes if node["id"] == 672), None)
+        positive_node["widgets_values"][0] = prompt
+        duration_node = next((node for node in nodes if node["id"] == 673), None)
+        duration_node["widgets_values"][0] = duration
+        scale_node = next((node for node in nodes if node["id"] == 700), None)
+        scale_node["widgets_values"][0] = aspect_ratio
+        first_image_node = next((node for node in nodes if node["id"] == 699), None)
+        first_image_node["widgets_values"][0] = workflow["699"]["inputs"]["image"]
+        last_image_node = next((node for node in nodes if node["id"] == 686), None)
+        last_image_node["widgets_values"][0] = workflow["686"]["inputs"]["image"]
+        
+        if audio_name:
+            # 替换音频
+            tts_node = next((node for node in nodes if node["id"] == 712), None)
+            tts_node["widgets_values"][0] = audio_name
+        
+        if not use_xianxia_lora:
+            xianxia_node = next((node for node in nodes if node["id"] == 725), None)
+            xianxia_node["mode"] = 4
 
-        return workflow
+        return workflow, ui_workflow
     
     
     async def generate_single_video(
@@ -225,6 +299,7 @@ class VideoGeneratorComfyUILTX:
         aspect_ratio: str = "16:9",
         fps: Literal[16, 24] = 24,
         duration: int = 5,
+        use_xianxia_lora: bool = False,
     ) -> VideoOutput:
         """
         生成单个视频
@@ -278,7 +353,7 @@ class VideoGeneratorComfyUILTX:
         
         if len_reference_image_paths >= 2:
             logger.info("============Using mutil frame workflow============")
-            workflow = await self.load_mutil_frame_workflow(
+            workflow, ui_workflow = await self.load_mutil_frame_workflow(
                 runner=runner,
                 prompt=prompt,
                 reference_image_paths=reference_image_paths,
@@ -287,10 +362,11 @@ class VideoGeneratorComfyUILTX:
                 fps=fps,
                 duration=duration,
                 audio_name=audio_name,
+                use_xianxia_lora=use_xianxia_lora,
             )
         else:
             logger.info("============Using first frame workflow============")
-            workflow = await self.load_first_frame_workflow(
+            workflow, ui_workflow = await self.load_first_frame_workflow(
                 runner=runner,
                 prompt=prompt,
                 reference_image_paths=reference_image_paths,
@@ -299,6 +375,7 @@ class VideoGeneratorComfyUILTX:
                 fps=fps,
                 duration=duration,
                 audio_name=audio_name,
+                use_xianxia_lora=use_xianxia_lora,
             )
 
         # 执行工作流
@@ -306,6 +383,7 @@ class VideoGeneratorComfyUILTX:
             workflow_path=mutil_frame_workflow_path if len_reference_image_paths >= 2 else first_frame_workflow_path,
             workflow=workflow,
             output_node_ids=mutil_frame_output_node_ids if len_reference_image_paths >= 2 else first_frame_output_node_ids,
+            ui_workflow=ui_workflow,
             # timeout=60 * 10,  # 10 分钟超时
         )
         
