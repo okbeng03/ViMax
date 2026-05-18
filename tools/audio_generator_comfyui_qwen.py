@@ -33,8 +33,18 @@ from agents.prompt_converter import Dialogue
 logger = logging.getLogger(__name__)
 
 workflow_path = "workflows/tts_qwen.json"
+workflow_ui_path = "workflows/tts_qwen_ui.json"
 output_node_ids = ["64"]
 max_noise = 2**50 - 1
+
+register_voices = {
+    "字博士": "字博士",
+    "小豆丁": "小豆丁",
+    "旁白": "旁白",
+    "default": "男生",
+    "Male": "男生",
+    "Female": "女生",
+}
 
 class AudioGeneratorComfyUIQwenTTS:
     """
@@ -69,21 +79,42 @@ class AudioGeneratorComfyUIQwenTTS:
         )
     
     
-    async def load_workflow(self, runner: ComfyUIWorkflowRunner, prompt: str, character: str) -> dict[str, Any]:
+    async def load_workflow(self, runner: ComfyUIWorkflowRunner, prompt: str, character: str, gender: Optional[str] = None) -> dict[str, Any]:
         """加载文生图工作流"""
+        
+        if character not in register_voices:
+            if gender == "Male":
+                voice = register_voices["Male"]
+            elif gender == "Female":
+                voice = register_voices["Female"]
+            else:
+                voice = register_voices["default"]
+        else:
+            voice = register_voices[character]    
     
         workflow = runner.load_workflow(workflow_path)
         workflow["64"]["inputs"]["filename_prefix"] = f"audio/{str(uuid.uuid4())}"
-        workflow["51"]["inputs"]["filename"] = f"{character}.wav"
+        workflow["51"]["inputs"]["filename"] = f"{voice}.wav"
         workflow["52"]["inputs"]["target_text"] = prompt
         workflow["52"]["inputs"]["seed"] = random.randint(1, max_noise)
         
-        return workflow
+        # ui
+        ui_workflow = runner.load_workflow(workflow_ui_path)
+        nodes = ui_workflow["nodes"]
+        output_node = next((node for node in nodes if node["id"] == 64), None)
+        output_node["widgets_values"][0] = f"audio/{str(uuid.uuid4())}"
+        voice_node = next((node for node in nodes if node["id"] == 51), None)
+        voice_node["widgets_values"][0] = f"{voice}.wav"
+        positive_node = next((node for node in nodes if node["id"] == 52), None)
+        positive_node["widgets_values"][0] = prompt
+        
+        return workflow, ui_workflow
     
     async def generate_single_audio(
         self,
         prompt: str,
         character: str,
+        gender: Optional[str] = None,
         **kwargs,
     ) -> AudioOutput:
         """
@@ -103,13 +134,14 @@ class AudioGeneratorComfyUIQwenTTS:
             base_url=self.base_url,
             rate_limiter=self.rate_limiter,
         )
-        workflow = await self.load_workflow(runner=runner, prompt=prompt, character=character)
+        workflow, ui_workflow = await self.load_workflow(runner=runner, prompt=prompt, character=character, gender=gender)
   
         # 执行工作流
         outputs = await runner.run(
             workflow_path=workflow_path,
             workflow=workflow,
             output_node_ids=output_node_ids,
+            ui_workflow=ui_workflow,
         )
         # 提取输出路径
         output_paths = runner.get_output_paths(outputs)
