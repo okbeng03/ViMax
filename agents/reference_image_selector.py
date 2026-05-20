@@ -44,7 +44,16 @@ Image 7: [Camera 2] Shot from Bob's over-the-shoulder perspective. Bob is on the
 
 
 [Output]
-You need to select up to 8 of the most relevant reference images based on the user's description and put the corresponding indices in the ref_image_indices field of the output. At the same time, you should generate a text prompt that describes the image to be created, specifying which elements in the generated image should reference which image description (and which elements within it).
+You need to select up to 8 of the most relevant reference images based on the user's description and put the corresponding indices in the ref_image_indices field of the output.
+
+At the same time, you should generate a final image-generation prompt that preserves the original target frame description enclosed within <FRAME_DESC> and </FRAME_DESC> as the core scene description. The final prompt should be composed of:
+
+* the original target frame description;
+* concise guidance extracted from the selected reference image descriptions.
+
+The generated prompt should explicitly specify which visual elements should reference which image descriptions, including character appearance, clothing, pose, camera angle, composition, environment, lighting, and visual style consistency.
+
+The reference-image guidance should supplement and constrain the target frame description rather than replace or rewrite it.
 
 {format_instructions}
 
@@ -59,6 +68,10 @@ You need to select up to 8 of the most relevant reference images based on the us
 - For character portraits, you can only select at most one image from multiple views (front, side, back). Choose the most appropriate one based on the frame description. For example, when depicting a character from the side, choose the side view of the character.
 - Note: The focus of the lens should be on the upper or lower body area. Do not abruptly present a truncated body, which is half of the meaning of the lens. Maintain a three-dimensional proportion. Avoid presenting a body that is cut off at the waist or legs.
 - Select at most **8** optimal reference image descriptions.
+- The generated text prompt that describes the image to be created must preserve the original target frame description enclosed within <FRAME_DESC> and </FRAME_DESC> as the core scene description. The final generation prompt should be composed of:
+    * the original target frame text description;
+    * concise reference-image guidance extracted from the selected reference images, including character appearance, clothing, camera angle, environment, lighting, composition, and style consistency information.
+    The reference-image guidance should supplement and constrain the target frame description rather than replace or rewrite it.
 """
 
 # [Role] 
