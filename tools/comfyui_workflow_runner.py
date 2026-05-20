@@ -321,7 +321,8 @@ class ComfyUIWorkflowRunner:
         workflow_start_time = time.time()
         prompt_id = await self._queue_prompt(task.workflow)
         logger.info(f"Comfyui Queued prompt: {prompt_id}. 开始时间: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(workflow_start_time))}")
-        workflow_path = os.path.join(f"{working_dir}/workflows", f"{prompt_id}.json")
+        workflow_name = os.path.splitext(os.path.basename(task.workflow_path))[0] if task.workflow_path else ""
+        workflow_path = os.path.join(f"{working_dir}/workflows", f"{workflow_name}_{prompt_id}.json")
         
         with open(workflow_path, 'w', encoding='utf-8') as f:
             f.write(json.dumps(task.workflow, ensure_ascii=False, indent=4))
