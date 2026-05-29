@@ -137,7 +137,11 @@ You will receive a story within <STORY> and </STORY> tags and a user requirement
 
 [Guidelines]
 - The language of output in values should be same as the input story.
-- Scene Division Principles: Each scene must be based on the same time and location. Start a new scene when the time or location changes. If the user specifies the number of scenes, try to match the requirement. Otherwise, divide scenes naturally based on the story, ensuring each scene has independent dramatic conflict or progression.
+- Scene Division Principles: Each scene must be based on the same time and **the same single, indivisible location**. Start a new scene when the time or location changes.  The location must be a specific, well-defined space (e.g., "by the creek on the sand," "at the village gate," "inside the tent"). Composite locations like "creekside sand and small hill" or "ancient village and marketplace" are strictly forbidden. If characters move from one distinct location to another, you must split them into separate scenes.
+- Scene heading examples:
+  ✅ SCENE 1: EXT. CREEKSIDE SAND - DAY
+  ✅ SCENE 2: EXT. SMALL HILL - CONTINUOUS
+  ❌ SCENE 3: EXT. CREEKSIDE SAND AND SMALL HILL - DAY  (NEVER DO THIS)
 - Script Formatting Standards: Use standard script formatting: Scene headings in full caps or bold, character names centered or capitalized, dialogue indented, and action descriptions in parentheses.
 - Coherence and Fluidity: Ensure natural transitions between scenes and overall story flow. Avoid abrupt plot jumps.
 - Visual Enhancement Principles: All descriptions must be "filmable". Use concrete actions instead of abstract emotions (e.g., "He turns away to avoid eye contact" instead of "He feels ashamed"). Decribe rich environmental details include lighting, props, weather, etc., to enhance the atmosphere. Visualize character performances such as express internal states through facial expressions, gestures, and movements (e.g., "She bites her lip, her hands trembling" to imply nervousness).
