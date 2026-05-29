@@ -186,7 +186,7 @@ class HanziPipeline:
                 logger.info(f"Brush stroke image already exists: {brush_stroke_path}")
             else:
                 # 下载笔画 gif。img id="bhbs"
-                brush_stroke_img = soup.find('img', id='bhbs')
+                brush_stroke_img = soup.find('img', id='glyph-img')
                 if brush_stroke_img:
                     brush_stroke_url = _ensure_url_protocol(brush_stroke_img["data-gif"])
                     download_image(brush_stroke_url, brush_stroke_path)
@@ -194,35 +194,38 @@ class HanziPipeline:
         definitions = []
         
         # 用户提供的 HTML 结构: div[data-type-block="基本解释"] > div.definitions > ol > li
-        basic_block = soup.find('div', attrs={'data-type-block': '基本解释'})
+        basic_block = soup.find('section', id='jbjs')
         if basic_block:
-            definitions_div = basic_block.find('div', class_='definitions')
+            definitions_div = basic_block.select('div.jbjs-reading')
             if definitions_div:
-                pinyins = basic_block.select('p > span.dicpy')
-                ols = definitions_div.select('ol')
-                for idx, ol in enumerate(ols):
-                    pinyin = pinyins[idx].contents[0].strip()
-                    audio_path = None
+                for definition_div in definitions_div:
+                    pinyin_head = definition_div.find('header', class_='jbjs-reading__head')
+                    ol = definition_div.find('ol', class_='jbjs-list')
+                    pinyin = ""
+
+                    if pinyin_head:
+                        pinyin = pinyin_head.find('span', class_='jbjs-reading__py').contents[0].strip()
+                        audio_path = None
                     
-                    if is_self:
-                        # 下载拼音音频
-                        temp_audio_path = os.path.join(self.working_dir, f"{pinyin}.mp3")
-                        audio_path = temp_audio_path.replace(".mp3", ".flac")
-                        if not os.path.exists(audio_path):
-                            # 音频url在 a.audio_play_button data-src-mp3属性里
-                            audio_url = _ensure_url_protocol(pinyins[idx].find('a', class_='audio_play_button')['data-src-mp3'])
-                        
-                            if audio_url:
-                                download_audio(audio_url, temp_audio_path)
-                                subprocess.run(["ffmpeg", "-y", "-i", temp_audio_path,
-                                                "-ar", "44100",
-                                                "-ac", "2",
-                                                "-sample_fmt", "s16",
-                                                "-c:a", "flac",
-                                                audio_path], check=True)
-                                subprocess.run(["ffprobe", audio_path], check=True)
-                            else:
-                                audio_path = None
+                        if is_self:
+                            # 下载拼音音频
+                            temp_audio_path = os.path.join(self.working_dir, f"{pinyin}.mp3")
+                            audio_path = temp_audio_path.replace(".mp3", ".flac")
+                            if not os.path.exists(audio_path):
+                                # 音频url在 a.audio_play_button data-src-mp3属性里
+                                audio_url = _ensure_url_protocol(pinyin_head.find('button', class_='audio-btn')['data-audio'])
+                            
+                                if audio_url:
+                                    download_audio(audio_url, temp_audio_path)
+                                    subprocess.run(["ffmpeg", "-y", "-i", temp_audio_path,
+                                                    "-ar", "44100",
+                                                    "-ac", "2",
+                                                    "-sample_fmt", "s16",
+                                                    "-c:a", "flac",
+                                                    audio_path], check=True)
+                                    subprocess.run(["ffprobe", audio_path], check=True)
+                                else:
+                                    audio_path = None
                     
                     explanations = []
                     for li in ol.find_all('li'):
@@ -251,14 +254,14 @@ class HanziPipeline:
         glyphs = []
         
         # 用户需要的字形类型映射
-        target_types = ['甲骨文', '金文', '楚系简帛', '楷书']
+        target_types = ['甲骨文', '金文', '楚系简帛', '隶书', '楷书']
         
         # 查找字源字形区域
-        glyph_block = soup.find('div', attrs={'data-type-block': '字源字形'})
+        glyph_block = soup.find('section', id="zyzx")
         if not glyph_block:
             return glyphs
         
-        table = glyph_block.find('table', class_='zyyb')
+        table = glyph_block.find('div', class_='glyph-evolution')
         if not table:
             return glyphs
         
@@ -266,46 +269,37 @@ class HanziPipeline:
         # if not tbody:
         #     return glyphs
         
-        rows = table.find_all('tr')
-        if len(rows) < 2:
+        items = table.select('.glyph-evolution__item')
+        if not items:
             return glyphs
         
-        # 第一行是表头，建立列索引到类型的映射
-        header_row = rows[0]
-        header_cells = header_row.find_all(['th', 'td'])
-        col_type_map = {}  # col_index -> type_name
+        # # 第一行是表头，建立列索引到类型的映射
+        # header_row = rows[0]
+        # header_cells = header_row.find_all(['th', 'td'])
+        # col_type_map = {}  # col_index -> type_name
         
-        for idx, cell in enumerate(header_cells):
-            # 首先要求 cell 非 display: none
-            style = cell.get('style', '').lower()
-            if 'display: none' in style or 'display:none' in style:
-                continue
-
-            cell_text = cell.get_text(strip=True)
+        for idx, cell in enumerate(items):
+            cell_text = cell.find('span', class_='glyph-evolution__label').get_text(strip=True)
+            glyph_type = ""
             
             # 标准化类型名称
             if cell_text in ['甲骨文']:
-                col_type_map[idx] = '甲骨文'
+                glyph_type = '甲骨文'
             elif cell_text in ['金文']:
-                col_type_map[idx] = '金文'
+                glyph_type = '金文'
             elif cell_text in ['楚系簡帛', '楚系簡帛', '楚簡', '楚簡文字']:
-                col_type_map[idx] = '楚系简帛'
+                glyph_type = '楚系简帛'
+            elif cell_text in ['隶书']:
+                glyph_type = '隶书'
             elif cell_text in ['楷書', '楷书']:
-                col_type_map[idx] = '楷书'
-        
-        # 遍历数据行，提取图片
-        for row in [rows[1]]:
-            cells = row.find_all('td')
-            for col_idx, cell in enumerate(cells):
-                if col_idx not in col_type_map:
-                    continue
-                
-                glyph_type = col_type_map[col_idx]
+                glyph_type = '楷书'
+
+            if glyph_type:
                 if glyph_type not in target_types:
                     continue
                 
                 # 查找图片或链接
-                img = cell.find('img', attrs={'data-original': re.compile(r'\.svg', re.IGNORECASE)})
+                img = cell.find('img')
                 if img:
                     # 优先使用 data-original，否则用 src
                     svg_url = img.get('data-original') or img.get('src', '')
@@ -328,7 +322,7 @@ class HanziPipeline:
                         })
                         
                         # 已找到，col_type_map 要移除对应 idx
-                        del col_type_map[col_idx]
+                        # del col_type_map[col_idx]
         
         return glyphs
 
