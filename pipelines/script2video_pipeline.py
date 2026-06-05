@@ -4,11 +4,13 @@ import json
 import logging
 import asyncio
 import time
+import math
 import subprocess
 from typing import Optional, Dict, List, Tuple, Literal
 from moviepy import VideoFileClip, concatenate_videoclips
 from PIL import Image
 from agents import *
+from agents.environment_agent import EnvironmentDesign, CameraCoverage
 from agents.prompt_converter import ShotDescriptionWithDialogues, Dialogue
 from agents.narration_agent import NarrationItem, ShotItem, Interval
 import yaml
@@ -48,6 +50,8 @@ class Script2VideoPipeline:
         self.reference_image_selector = ReferenceImageSelector(chat_model=self.chat_model)
         self.prompt_converter = PromptConverter()
         self.narration_agent = NarrationAgent(chat_model=self.chat_model, audio_generator=self.audio_generator)
+        self.environment_designer = EnvironmentDesigner(chat_model=self.chat_model)
+        self.transition_director = TransitionDirector(chat_model=self.chat_model)
         
         # 检测是否是 LTX 模型（只有 LTX 需要对话融入场景）
         self.is_ltx_model = "ltx" in type(self.video_generator).__name__.lower()
@@ -121,7 +125,24 @@ class Script2VideoPipeline:
                     json.dump(character_portraits_registry, f, ensure_ascii=False, indent=4)
                 print(f"☑️ Generated {len(character_portraits_registry)} character portraits and saved to {character_portraits_registry_path}.")
 
+        # design environment
+        environment_design = await self.design_environment(
+            script=script,
+            style=style,
+        )
 
+        if self.check_interrupt("environment"):
+            return
+
+        # generate environment image
+        environments = await self.generate_environment_images(
+            environment_design=environment_design,
+            style=style,
+        )
+
+        if self.check_interrupt("environment_images"):
+            return
+        # environments = {}
 
         # design shots
         # 场景分镜
@@ -130,6 +151,7 @@ class Script2VideoPipeline:
             script=script,
             characters=characters,
             user_requirement=user_requirement,
+            environment=environment_design
         )
         
         if self.check_interrupt("storyboard"):
@@ -147,31 +169,34 @@ class Script2VideoPipeline:
 
         # 构建相机树，父子级关系
         # construct camera tree
-        camera_tree = await self.construct_camera_tree(
-            shot_descriptions=shot_descriptions,
-        )
+        # camera_tree = await self.construct_camera_tree(
+        #     shot_descriptions=shot_descriptions,
+        # )
         
-        if self.check_interrupt("camera_tree"):
-            return
+        # if self.check_interrupt("camera_tree"):
+        #     return
         
         if self.gacha_config:
             # 抽卡模式
             if self.gacha_config["type"] != "video":
                 shot_description = shot_descriptions[self.gacha_config["shot"]]
-                camera = camera_tree[shot_description.cam_idx]
-                first_shot_idx = camera.active_shot_idxs[0]
-                first_shot_ff_path = os.path.join(self.working_dir, "shots", f"{first_shot_idx}", "first_frame.png")
+                # camera = camera_tree[shot_description.cam_idx]
+                # first_shot_idx = camera.active_shot_idxs[0]
+                # first_shot_ff_path = os.path.join(self.working_dir, "shots", f"{first_shot_idx}", "first_frame.png")
                 shot_idx = shot_description.idx
                 
                 print(f"🔍Gacha Mode:: Start generating {self.gacha_config['type']} for shot {shot_idx}...")
                 
                 await self.generate_frame_for_single_shot(
+                    shot=shot_description,
                     shot_idx=shot_idx, 
                     frame_type=self.gacha_config["type"], 
-                    first_shot_ff_path_and_text_pair=(first_shot_ff_path, shot_descriptions[first_shot_idx].ff_desc),
+                    first_shot_ff_path_and_text_pair=(os.path.join(self.working_dir, "shots", shot_idx, "first_frame.png"), shot_description.ff_desc) if self.gacha_config["type"] == "first_frame" else None,
                     frame_desc=shot_description.ff_desc if self.gacha_config["type"] == "first_frame" else shot_description.lf_desc,
                     visible_characters=[characters[idx] for idx in (shot_description.ff_vis_char_idxs if self.gacha_config["type"] == "first_frame" else shot_description.lf_vis_char_idxs)],
                     character_portraits_registry=character_portraits_registry,
+                    environment=environment_design,
+                    environments_registry=environments,
                     style=style,
                 )
                 return
@@ -180,24 +205,60 @@ class Script2VideoPipeline:
                 shot_description = shot_descriptions[self.gacha_config["shot"]]
                 await self.generate_video_for_single_shot(
                     shot_description=shot_description,
+                    characters=characters,
                 )
         else:
             # 优先拍摄父相机？
             # 基于机位生成对应镜头的首尾帧
-            priority_shot_idxs = [camera.parent_cam_idx for camera in camera_tree if camera.parent_cam_idx is not None]
-            tasks = [
-                self.generate_frames_for_single_camera(
-                    camera=camera,
-                    shot_descriptions=shot_descriptions,
-                    characters=characters,
-                    character_portraits_registry=character_portraits_registry,
-                    priority_shot_idxs=priority_shot_idxs,
-                    style=style,
-                )
-                for camera in camera_tree
-            ]
-            await asyncio.gather(*tasks)
+            # priority_shot_idxs = [camera.parent_cam_idx for camera in camera_tree if camera.parent_cam_idx is not None]
+            # tasks = [
+            #     self.generate_frames_for_single_camera(
+            #         camera=camera,
+            #         shot_descriptions=shot_descriptions,
+            #         characters=characters,
+            #         character_portraits_registry=character_portraits_registry,
+            #         environments_registry=environments,
+            #         priority_shot_idxs=priority_shot_idxs,
+            #         style=style,
+            #     )
+            #     for camera in camera_tree
+            # ]
             
+            tasks = []
+
+            for shot in shot_descriptions:
+                tasks.append(
+                    self.generate_frame_for_single_shot(
+                        shot=shot,
+                        shot_idx=shot.idx,
+                        frame_type="first_frame",
+                        frame_desc=shot.ff_desc,
+                        visible_characters=[characters[idx] for idx in shot.ff_vis_char_idxs],
+                        character_portraits_registry=character_portraits_registry,
+                        environment=environment_design,
+                        environments_registry=environments,
+                        style=style,
+                    )
+                )
+
+                if shot.variation_type in ["medium", "large"]:
+                    tasks.append(
+                        self.generate_frame_for_single_shot(
+                            shot=shot,
+                            shot_idx=shot.idx,
+                            frame_type="last_frame",
+                            first_shot_ff_path_and_text_pair=(os.path.join(self.working_dir, "shots", f"{shot.idx}", "first_frame.png"), shot.ff_desc),
+                            frame_desc=shot.lf_desc,
+                            visible_characters=[characters[idx] for idx in shot.lf_vis_char_idxs],
+                            character_portraits_registry=character_portraits_registry,
+                            environment=environment_design,
+                            environments_registry=environments,
+                            style=style,
+                        )
+                    )
+
+            await asyncio.gather(*tasks)
+
             if self.check_interrupt("camera_frame"):
                 return
 
@@ -205,10 +266,23 @@ class Script2VideoPipeline:
             video_tasks = [
                 self.generate_video_for_single_shot(
                     shot_description=shot_description,
+                    characters=characters,
                 )
                 for shot_description in shot_descriptions
             ]
             await asyncio.gather(*video_tasks)
+
+            if self.check_interrupt("shot_video"):
+                return
+
+            # latent continuity transition
+            shot_transitions = await self.generate_shot_transitions(
+                shot_descriptions=shot_descriptions,
+                style=style,
+            )
+
+            if self.check_interrupt("shot_transition"):
+                return
             
             # 合并场景视频
             final_video_path = os.path.join(self.working_dir, "final_video.mp4")
@@ -222,10 +296,15 @@ class Script2VideoPipeline:
                     print(f"🚀 Skipped concatenating story video, already exists.")
                 else:
                     print(f"🎬 Starting concatenating story video...")
-                    video_clips = [
-                        VideoFileClip(os.path.join(self.working_dir, "shots", f"{shot_description.idx}", "video.mp4"), audio=True)
-                        for shot_description in shot_descriptions
-                    ]
+                    video_clips = []
+                    for idx, shot_description in enumerate(shot_descriptions):
+                        video_clips.append(
+                            VideoFileClip(os.path.join(self.working_dir, "shots", f"{shot_description.idx}", "video.mp4"), audio=True)
+                        )
+                        if idx < len(shot_transitions) and shot_transitions[idx] is not None:
+                            trans_path, _ = shot_transitions[idx]
+                            video_clips.append(VideoFileClip(trans_path, audio=False))
+
                     story_video = concatenate_videoclips(video_clips, method="compose")
                     story_video.write_videofile(story_video_path, codec="libx264", preset="medium", audio_codec="aac", fps=None, audio_bitrate="192k")
                     print(f"☑️ Concatenated story video, saved to {story_video_path}.")
@@ -235,6 +314,7 @@ class Script2VideoPipeline:
                     script=script,
                     user_requirement=user_requirement,
                     storyboard=storyboard,
+                    shot_transitions=shot_transitions,
                 )
                 
                 # 合并视频和旁白
@@ -281,6 +361,7 @@ class Script2VideoPipeline:
         shot_descriptions: List[ShotDescription],
         characters: List[CharacterInScene],
         character_portraits_registry: Dict[str, Dict[str, Dict[str, str]]],
+        environments_registry: Dict[str, Dict[str, str]],
         priority_shot_idxs: List[int],
         style: str,
     ):
@@ -354,57 +435,12 @@ class Script2VideoPipeline:
 
             # 如果有父镜头，并且父镜头完全覆盖了子镜头；则直接使用切换场景作为首帧图；否则生成首帧图
             # if camera.parent_shot_idx is None or camera.missing_info is not None:
-            ff_selector_output_path = os.path.join(self.working_dir, "shots", f"{first_shot_idx}", "first_frame_selector_output.json")
-            if os.path.exists(ff_selector_output_path):
-                with open(ff_selector_output_path, 'r', encoding='utf-8') as f:
-                    ff_selector_output = json.load(f)
-                print(f"🚀 Loaded existing reference image selection and prompt for first_frame of shot {first_shot_idx} from {ff_selector_output_path}.")
-            else:
-                print(f"🔍 Selecting reference images and generating prompt for first_frame of shot {first_shot_idx}...")
-                # 基于镜头描述和参考图像，生成一个描述要创建的图像的文本提示符，指定生成的图像中的哪些元素应该引用哪个图像描述（以及其中的哪些元素）
-                # 参考人物特征 + 前面帧，保证角色、环境、风格一致性
-                # 这里只参考了人物肖像
-                ff_selector_output = await self.reference_image_selector.select_reference_images_and_generate_prompt(
-                    available_image_path_and_text_pairs=available_image_path_and_text_pairs,
-                    frame_description=shot_descriptions[first_shot_idx].ff_desc,
-                    only_text_model=True,
-                )
-                with open(ff_selector_output_path, 'w', encoding='utf-8') as f:
-                    json.dump(ff_selector_output, f, ensure_ascii=False, indent=4)
-                # ff_selector_output = None
-
-                print(f"☑️ Selected reference images and generated prompt for first_frame of shot {first_shot_idx}, saved to {ff_selector_output_path}.")
-            
-            if not ff_selector_output:
-                return
-
-            reference_image_path_and_text_pairs, prompt = ff_selector_output["reference_image_path_and_text_pairs"], ff_selector_output["text_prompt"]
-            prefix_prompt = f"style: {style}\n"
-            # for i, (image_path, text) in enumerate(reference_image_path_and_text_pairs):
-            #     prefix_prompt += f"Image {i}: {text}\n"
-            prompt = f"{prefix_prompt}\n{prompt}"
-            reference_image_paths = [item[0] for item in reference_image_path_and_text_pairs]
-            
-            for reference_image_path in reference_image_paths:
-                ref_frame_type = None
-                for ft in ["first_frame", "last_frame"]:
-                    if ft in reference_image_path:
-                        ref_frame_type = ft
-                        break
-
-                if ref_frame_type:
-                    parts = reference_image_path.split("/")
-                    shots_idx = parts.index("shots") if "shots" in parts else -1
-                    frame_index = int(parts[shots_idx + 1]) if shots_idx >= 0 else None
-
-                    if frame_index is not None and frame_index != first_shot_idx:
-                        await self.frame_events[frame_index][ref_frame_type].wait()
-
-            # 基于参考图片 + 描述生成图片
-            ff_image: ImageOutput = await self.image_generator.generate_single_image(
-                prompt=prompt,
-                reference_image_paths=reference_image_paths,
-                size="2560x1440",
+            ff_image: ImageOutput = await self.generate_image_for_single_shot(
+                shot_idx=first_shot_idx,
+                frame_type="first_frame",
+                frame_desc=shot_descriptions[first_shot_idx].ff_desc,
+                available_image_path_and_text_pairs=available_image_path_and_text_pairs,
+                style=style
             )
             ff_image.save(first_shot_ff_path)
             self.frame_events[first_shot_idx]["first_frame"].set()
@@ -472,6 +508,7 @@ class Script2VideoPipeline:
     async def generate_video_for_single_shot(
         self,
         shot_description: ShotDescription,
+        characters: List[CharacterInScene],
     ):
         video_path = os.path.join(self.working_dir, "shots", f"{shot_description.idx}", "video.mp4")
         if os.path.exists(video_path):
@@ -502,6 +539,7 @@ class Script2VideoPipeline:
                     audio_desc=shot_description.audio_desc,
                     # visual_desc=shot_description.visual_desc,
                     motion_desc=shot_description.motion_desc,
+                    characters=characters,
                     shot_duration=shot_description.shot_duration or 5.0,
                 )
                 # 写入文件
@@ -552,18 +590,39 @@ class Script2VideoPipeline:
                 audio_path=dialogue_audio_path,
                 duration=int(shot_description.shot_duration or 5.0),
                 use_xianxia_lora=shot_description_with_dialogues.use_xianxia_lora,
+                is_small_people=shot_description_with_dialogues.is_small_people,
             )
-            video_output.save(video_path)
+            
+            # 后续统一成 1680
+            if shot_description_with_dialogues.is_small_people:
+                self._scale_video(video_output, video_path)
+            else:
+                video_output.save(video_path)
+
+            if shot_description.variation_type == "small":
+                # 小镜头，提取最后一帧
+                last_frame_path = os.path.join(self.working_dir, "shots", f"{shot_description.idx}", "last_frame.png")
+
+                if os.path.exists(video_path):
+                    subprocess.run([
+                        "ffmpeg", "-y", "-sseof", "-1", "-i", video_path,
+                        "-update", "1", "-q:v", "1", last_frame_path,
+                    ], check=True, capture_output=True)
+
             print(f"☑️ Generated video for shot {shot_description.idx}, saved to {video_path}.")
 
     async def generate_frame_for_single_shot(
         self,
+        shot: ShotDescription,
         shot_idx: int,
         frame_type: Literal["first_frame", "last_frame"],
-        first_shot_ff_path_and_text_pair: Tuple[str, str],
+        *,
+        first_shot_ff_path_and_text_pair: Optional[Tuple[str, str]] = None,
         frame_desc: str,
         visible_characters: List[CharacterInScene],
         character_portraits_registry: Dict[str, Dict[str, Dict[str, str]]],
+        environment: EnvironmentDesign,
+        environments_registry: Dict[str, Dict[str, str]],
         style: str,
     ) -> ImageOutput:
 
@@ -581,61 +640,106 @@ class Script2VideoPipeline:
                 for view, item in registry_item.items():
                     available_image_path_and_text_pairs.append((item["path"], item["description"]))
 
-            available_image_path_and_text_pairs.append(first_shot_ff_path_and_text_pair)
+            if first_shot_ff_path_and_text_pair:
+                available_image_path_and_text_pairs.append(first_shot_ff_path_and_text_pair)
 
-            # 基于镜头描述和参考图像，生成一个描述要创建的图像的文本提示符，指定生成的图像中的哪些元素应该引用哪个图像描述（以及其中的哪些元素）
-            # 参考人物特征 + 前面帧，保证角色、环境、风格一致性
-            # 这里参考了人物肖像 + 首帧
-            selector_output_path = os.path.join(self.working_dir, "shots", f"{shot_idx}", f"{frame_type}_selector_output.json")
-            if os.path.exists(selector_output_path):
-                with open(selector_output_path, 'r', encoding='utf-8') as f:
-                    selector_output = json.load(f)
-                print(f"🚀 Loaded existing reference image selection and prompt for {frame_type} frame of shot {shot_idx} from {selector_output_path}.")
+            # enviroment available
+            if shot.camera_id:
+                environment = environments_registry[shot.camera_id]
+                available_image_path_and_text_pairs.append((environment["path"], environment["description"]))
             else:
-                print(f"🔍 Selecting reference images and generating prompt for {frame_type} frame of shot {shot_idx}...")
-                selector_output = await self.reference_image_selector.select_reference_images_and_generate_prompt(
-                    available_image_path_and_text_pairs=available_image_path_and_text_pairs,
-                    frame_description=frame_desc,
-                    only_text_model=True,
-                )
-                with open(selector_output_path, 'w', encoding='utf-8') as f:
-                    json.dump(selector_output, f, ensure_ascii=False, indent=4)
-                print(f"☑️ Selected reference images and generated prompt for {frame_type} frame of shot {shot_idx}, saved to {selector_output_path}.")
+                # 根据 new_camera_reason 生成新的环境图
+                if shot.new_camera_reason:
+                    new_camera = await self.environment_designer.design_new_camera(
+                        environment=environment,
+                        shot_description=shot.visual_desc,
+                        new_camera_reason=shot.new_camera_reason,
+                        style=style,
+                    )
+                    new_camera_image_path = await self.generate_environment_image(new_camera, style)
+                    available_image_path_and_text_pairs.append((new_camera_image_path, f"{new_camera.lens_type}，{new_camera.composition_style}，{new_camera.visible_environment_area}"))
 
-            reference_image_path_and_text_pairs, prompt = selector_output["reference_image_path_and_text_pairs"], selector_output["text_prompt"]
-            prefix_prompt = f"style: {style}\n"
-            # for i, (image_path, text) in enumerate(reference_image_path_and_text_pairs):
-            #     prefix_prompt += f"Image {i}: {text}\n"
-            prompt = f"{prefix_prompt}\n{prompt}"
-            reference_image_paths = [item[0] for item in reference_image_path_and_text_pairs]
-
-            # 检查 reference_image_paths，如果有引用非同一个 shot index 的首尾帧，则 wait
-            for reference_image_path in reference_image_paths:
-                ref_frame_type = None
-                for ft in ["first_frame", "last_frame"]:
-                    if ft in reference_image_path:
-                        ref_frame_type = ft
-                        break
-
-                if ref_frame_type:
-                    parts = reference_image_path.split("/")
-                    shots_idx = parts.index("shots") if "shots" in parts else -1
-                    frame_index = int(parts[shots_idx + 1]) if shots_idx >= 0 else None
-
-                    if frame_index is not None and frame_index != shot_idx:
-                        await self.frame_events[frame_index][ref_frame_type].wait()
-
-            frame_image: ImageOutput = await self.image_generator.generate_single_image(
-                prompt=prompt,
-                reference_image_paths=reference_image_paths,
-                size="2560x1440",
+            frame_image: ImageOutput = await self.generate_image_for_single_shot(
+                shot_idx=shot_idx,
+                frame_type=frame_type,
+                frame_desc=frame_desc,
+                available_image_path_and_text_pairs=available_image_path_and_text_pairs,
+                style=style
             )
             frame_image.save(frame_image_path)
             print(f"☑️ Generated {frame_type} frame for shot {shot_idx}, saved to {frame_image_path}.")
 
-
         self.frame_events[shot_idx][frame_type].set()
         return frame_image_path
+
+
+    async def generate_image_for_single_shot(
+        self,
+        shot_idx: int,
+        frame_type: Literal["first_frame", "last_frame"],
+        frame_desc: str,
+        available_image_path_and_text_pairs: List[Tuple[str, str]],
+        style: str,
+    ) -> ImageOutput:
+        """
+        生成镜头图片
+        """
+        
+        selector_output_path = os.path.join(self.working_dir, "shots", f"{shot_idx}", f"{frame_type}_selector_output.json")
+        if os.path.exists(selector_output_path):
+            with open(selector_output_path, 'r', encoding='utf-8') as f:
+                selector_output = json.load(f)
+            print(f"🚀 Loaded existing reference image selection and prompt for {frame_type} frame of shot {shot_idx} from {selector_output_path}.")
+        else:
+            print(f"🔍 Selecting reference images and generating prompt for {frame_type} frame of shot {shot_idx}...")
+            # 基于镜头描述和参考图像，生成一个描述要创建的图像的文本提示符，指定生成的图像中的哪些元素应该引用哪个图像描述（以及其中的哪些元素）
+            # 参考人物特征 + 前面帧，保证角色、环境、风格一致性
+            # 这里只参考了人物肖像
+            selector_output = await self.reference_image_selector.select_reference_images_and_generate_prompt(
+                available_image_path_and_text_pairs=available_image_path_and_text_pairs,
+                frame_description=frame_desc,
+                only_text_model=True,
+            )
+            with open(selector_output_path, 'w', encoding='utf-8') as f:
+                json.dump(selector_output, f, ensure_ascii=False, indent=4)
+            print(f"☑️ Selected reference images and generated prompt for {frame_type} frame of shot {shot_idx}, saved to {selector_output_path}.")
+        
+        if not selector_output:
+            return
+            
+        reference_image_path_and_text_pairs, prompt = selector_output["reference_image_path_and_text_pairs"], selector_output["text_prompt"]
+        prefix_prompt = f"style: {style}\n"
+        # for i, (image_path, text) in enumerate(reference_image_path_and_text_pairs):
+        #     prefix_prompt += f"Image {i}: {text}\n"
+        prompt = f"{prefix_prompt}\n{prompt}"
+        reference_image_paths = [item[0] for item in reference_image_path_and_text_pairs]
+
+        # 检查 reference_image_paths，如果有引用非同一个 shot index 的首尾帧，则 wait
+        for reference_image_path in reference_image_paths:
+            ref_frame_type = None
+            for ft in ["first_frame", "last_frame"]:
+                if ft in reference_image_path:
+                    ref_frame_type = ft
+                    break
+
+            if ref_frame_type:
+                parts = reference_image_path.split("/")
+                shots_idx = parts.index("shots") if "shots" in parts else -1
+                frame_index = int(parts[shots_idx + 1]) if shots_idx >= 0 else None
+
+                if frame_index is not None:
+                    await self.frame_events[frame_index][ref_frame_type].wait()
+
+        frame_image: ImageOutput = await self.image_generator.generate_single_image(
+            prompt=prompt,
+            reference_image_paths=reference_image_paths,
+            size="2560x1440",
+        )
+        
+        # TODO:: 评估、反馈、循环
+        
+        
+        return frame_image
 
 
     async def construct_camera_tree(
@@ -773,11 +877,107 @@ class Script2VideoPipeline:
 
 
 
+    async def design_environment(
+        self,
+        script: str,
+        style: str,
+    ) -> EnvironmentDesign:
+        environment_design_path = os.path.join(self.working_dir, "environment_design.json")
+        if os.path.exists(environment_design_path):
+            with open(environment_design_path, 'r', encoding='utf-8') as f:
+                environment_design = json.load(f)
+            environment_design = EnvironmentDesign.model_validate(environment_design)
+            print(f"🚀 Loaded environment design from existing file.")
+        else:
+            print(f"🎬 Designing environment...")
+            environment_design = await self.environment_designer.design_environment(
+                scene_description=script,
+                style=style,
+                retry_timeout=300,
+            )
+            with open(environment_design_path, 'w', encoding='utf-8') as f:
+                json.dump(environment_design.model_dump(), f, ensure_ascii=False, indent=4)
+            print(f"✅ Environment designed and saved to {environment_design_path}.")
+
+        return environment_design
+
+
+    async def generate_environment_images(
+        self,
+        environment_design: EnvironmentDesign,
+        style: str,
+    ) -> Dict[str, Dict[str, str]]:
+        """生成环境母图和各机位图，返回 camera_id → 图片路径 映射"""
+        env_images_dir = os.path.join(self.working_dir, "environments")
+        os.makedirs(env_images_dir, exist_ok=True)
+
+        # 1. 生成母图
+        master_image_path = os.path.join(env_images_dir, "master.png")
+        if os.path.exists(master_image_path):
+            print(f"🚀 Loaded existing master environment image.")
+        else:
+            master_prompt = f"style: {style}\n{environment_design.master_prompt}" if style else environment_design.master_prompt
+            print(f"🎬 Generating master environment image...")
+            master_image: ImageOutput = await self.image_generator.generate_single_image(
+                prompt=master_prompt,
+                size="2560x1440",
+            )
+            master_image.save(master_image_path)
+            print(f"✅ Master environment image saved to {master_image_path}.")
+
+        # 2. 基于母图生成各机位图
+        camera_image_map: Dict[str, str] = {}
+        for cam_coverage in environment_design.camera_coverages:
+            cam_image_path = await self.generate_environment_image(cam_coverage, style)
+            camera_image_map[cam_coverage.camera_id] = {
+                "path": cam_image_path,
+                "description": f"{cam_coverage.lens_type}，{cam_coverage.composition_style}，{cam_coverage.visible_environment_area}",
+            }
+            print(f"✅ Camera image for {cam_coverage.camera_id} saved to {cam_image_path}.")
+
+        # 3. 保存映射
+        camera_image_map_path = os.path.join(self.working_dir, "camera_image_map.json")
+
+        if os.path.exists(camera_image_map_path):
+            with open(camera_image_map_path, 'r', encoding='utf-8') as f:
+                camera_image_map = json.load(f)
+            print(f"🚀 Loaded camera → image map from existing file.")
+        else:
+            with open(camera_image_map_path, 'w', encoding='utf-8') as f:
+                json.dump(camera_image_map, f, ensure_ascii=False, indent=4)
+            print(f"✅ Camera → image map saved to {camera_image_map_path}.")
+
+        return camera_image_map
+
+    async def generate_environment_image(
+        self,
+        camera_coverage: CameraCoverage,
+        style: str,
+    ) -> str:
+        working_dir = os.path.join(self.working_dir, "environments")
+        master_image_path = os.path.join(working_dir, "master.png")
+        cam_image_path = os.path.join(working_dir, f"{camera_coverage.camera_id}.png")
+        if os.path.exists(cam_image_path):
+            print(f"🚀 Loaded existing camera image for {camera_coverage.camera_id}.")
+        else:
+            # edit_prompt = f"style: {style}\n{camera_coverage.qwen_edit_camera_prompt}" if style else camera_coverage.qwen_edit_camera_prompt
+            print(f"📷 Generating camera image for {camera_coverage.camera_id} ({camera_coverage.camera_name})...")
+            cam_image: ImageOutput = await self.image_generator.generate_single_image(
+                prompt=camera_coverage.qwen_edit_camera_prompt,
+                reference_image_paths=[master_image_path, master_image_path],
+                size="2560x1440",
+                workflow_name="qwen_edit_camera",
+            )
+            cam_image.save(cam_image_path)
+
+        return cam_image_path
+
     async def design_storyboard(
         self,
         script: str,
         characters: List[CharacterInScene],
         user_requirement: str,
+        environment: EnvironmentDesign,
     ):
         storyboard_path = os.path.join(self.working_dir, "storyboard.json")
         if os.path.exists(storyboard_path):
@@ -790,6 +990,7 @@ class Script2VideoPipeline:
             storyboard = await self.storyboard_artist.design_storyboard(
                 script=script,
                 characters=characters,
+                environment=environment,
                 user_requirement=user_requirement,
                 retry_timeout=300,
             )
@@ -814,7 +1015,10 @@ class Script2VideoPipeline:
         characters: List[CharacterInScene],
     ):
         tasks = [
-            self.decompose_visual_description_for_single_shot_brief_description(shot_brief_description, characters)
+            self.decompose_visual_description_for_single_shot_brief_description(
+                shot_brief_description,
+                characters
+            )
             for shot_brief_description in shot_brief_descriptions
         ]
 
@@ -861,10 +1065,17 @@ class Script2VideoPipeline:
 
         return shot_description
 
-    async def generate_narration_audio(self, script: str, user_requirement: str, storyboard: List[ShotBriefDescription]):
+    async def generate_narration_audio(
+        self,
+        script: str,
+        user_requirement: str,
+        storyboard: List[ShotBriefDescription],
+        shot_transitions: List[Optional[Tuple[str, float]]] = None,
+    ):
         """
         生成旁白音频
-        使用 NarrationAgent 生成旁白音频
+        使用 NarrationAgent 生成旁白音频。如果有转场，将转场时长计入对应 shot 的尾部静音，
+        保证旁白音频总时长 = 最终视频总时长（转场视频不加旁白）。
         """
         narration_audio_path = os.path.join(self.working_dir, "narration_audio.flac")
         narration_desc_path = os.path.join(self.working_dir, "narration_desc.json")
@@ -960,11 +1171,6 @@ class Script2VideoPipeline:
                 user_requirement=user_requirement
             )
             
-            # for narration_item in narration_desc:
-            #     if narration_item.idx > 0:
-            #         prev_total_duration = sum([shot_item.shot_duration for shot_item in shot_items[:narration_item.idx]])
-            #         narration_item.start_time = prev_total_duration + narration_item.start_time
-            
             # 保存旁白描述
             narration_data = [item.model_dump() for item in narration_desc]
             with open(narration_desc_path, 'w', encoding='utf-8') as f:
@@ -972,7 +1178,15 @@ class Script2VideoPipeline:
             
             print(f"✅ Generated narration description and saved to {narration_desc_path}.")
         
-        # 3. 调用 NarrationAgent.generate_audio 生成旁白音频
+        # 3. 如果存在转场，将转场时长计入对应 shot 的尾部静音（转场不加旁白）
+        if shot_transitions and len(shot_transitions) > 0:
+            for i, trans in enumerate(shot_transitions):
+                if trans is not None and i < len(narration_desc):
+                    _, trans_dur = trans
+                    narration_desc[i].shot_duration += trans_dur
+            print(f"🔧 Adjusted narration shot_durations with transition gaps.")
+        print(55555, narration_desc)
+        # 4. 生成旁白音频（shot 尾部静音中自然包含转场时长）
         await self.narration_agent.generate_audio(
             narration=narration_desc,
             output_path=narration_audio_path,
@@ -980,3 +1194,124 @@ class Script2VideoPipeline:
         print(f"✅ Generated narration audio saved to {narration_audio_path}.")
         
         return narration_audio_path
+
+    async def generate_shot_transitions(self, shot_descriptions: List[ShotDescription], style: str) -> List[Optional[Tuple[str, float]]]:
+        """生成shot之间的转场视频。latent continuity transition"""
+
+        if len(shot_descriptions) < 2:
+            return []
+
+        transition_dir = os.path.join(self.working_dir, "transitions")
+        transition_desc_path = os.path.join(self.working_dir, "transitions.json")
+        os.makedirs(transition_dir, exist_ok=True)
+
+        transition_results = []
+        transition_fragments = []
+
+        if os.path.exists(transition_desc_path):
+            with open(transition_desc_path, 'r', encoding='utf-8') as f:
+                transition_data = json.load(f)
+            transition_fragments = [TransFragment.model_validate(item) for item in transition_data]
+
+        for i in range(len(shot_descriptions) - 1):
+            prev_shot = shot_descriptions[i]
+            next_shot = shot_descriptions[i + 1]
+
+            # ── 前一个 shot 的尾帧 ──
+            prev_shot_dir = os.path.join(self.working_dir, "shots", str(prev_shot.idx))
+            prev_last_frame_path = os.path.join(prev_shot_dir, "last_frame.png")
+
+            if not os.path.exists(prev_last_frame_path):
+                # 如果前一个 shot 没有 last_frame，从视频中提取最后一帧
+                video_path = os.path.join(prev_shot_dir, "video.mp4")
+                if os.path.exists(video_path):
+                    print(f"📸 Extracting last frame from shot {prev_shot.idx} video...")
+                    subprocess.run([
+                        "ffmpeg", "-y", "-sseof", "-1", "-i", video_path,
+                        "-update", "1", "-q:v", "1", prev_last_frame_path,
+                    ], check=True, capture_output=True)
+                    print(f"☑️ Extracted last frame for shot {prev_shot.idx}.")
+                else:
+                    print(f"⚠️ No video found for shot {prev_shot.idx}, skipping transition {prev_shot.idx}->{next_shot.idx}.")
+                    transition_fragments.append(None)
+                    continue
+
+            # ── 后一个 shot 的首帧 ──
+            next_shot_dir = os.path.join(self.working_dir, "shots", str(next_shot.idx))
+            next_first_frame_path = os.path.join(next_shot_dir, "first_frame.png")
+
+            if not os.path.exists(next_first_frame_path):
+                print(f"⚠️ No first frame found for shot {next_shot.idx}, skipping transition {prev_shot.idx}->{next_shot.idx}.")
+                transition_fragments.append(None)
+                continue
+
+            # ── 转场视频路径 ──
+            transition_video_path = os.path.join(
+                transition_dir, f"transition_{prev_shot.idx}_to_{next_shot.idx}.mp4"
+            )
+
+            if os.path.exists(transition_video_path):
+                print(f"🚀 Skipped transition {prev_shot.idx}->{next_shot.idx}, already exists.")
+                clip = VideoFileClip(transition_video_path)
+                transition_results.append((transition_video_path, clip.duration))
+                clip.close()
+                continue
+
+            print(f"🎬 Generating latent continuity transition {prev_shot.idx} -> {next_shot.idx}...")
+
+            # ── 调用 TransitionDirector 生成转场描述 ──
+            trans_fragment = next(filter(lambda x: x.idx == i, transition_fragments), None)
+
+            if trans_fragment is None:
+                trans_fragment: TransFragment = await self.transition_director.design_transition(
+                    previous_shot=prev_shot.visual_desc,
+                    next_shot=next_shot.visual_desc,
+                    previous_last_frame=prev_shot.lf_desc if prev_shot.lf_desc else "",
+                    next_first_frame=next_shot.ff_desc if next_shot.ff_desc else "",
+                    environment_style=style,
+                )
+                trans_fragment.idx = i
+                transition_fragments.append(trans_fragment)
+
+            # ── 使用首尾帧生成转场视频 ──
+            trans_output = await self.video_generator.generate_single_video(
+                prompt=trans_fragment.motion_desc,
+                reference_image_paths=[prev_last_frame_path, next_first_frame_path],
+                duration=trans_fragment.duration,
+            )
+            
+            # self._scale_video(trans_output, transition_video_path)
+            trans_output.save(transition_video_path)
+
+            clip = VideoFileClip(transition_video_path)
+            transition_results.append((transition_video_path, clip.duration))
+            clip.close()
+
+            print(f"☑️ Generated transition {prev_shot.idx} -> {next_shot.idx}, saved to {transition_video_path}.")
+
+        if len(transition_fragments) > 0:
+            with open(transition_desc_path, 'w', encoding='utf-8') as f:
+                json.dump([t.model_dump() for t in transition_fragments], f, ensure_ascii=False, indent=4)
+
+        transition_data = []
+
+        for trans in transition_fragments:
+            if trans.enable:
+                transition_data.append(transition_results[trans.idx])
+            else:
+                transition_data.append(None)
+
+        return transition_data
+
+    def _scale_video(self, video_output: VideoOutput, video_path: str):
+        """缩放视频"""
+        
+        temp_video_path = video_path.replace(".mp4", "_temp.mp4")
+        video_output.save(temp_video_path)
+        subprocess.run([
+            "ffmpeg", "-y", "-i", temp_video_path,
+            "-vf", "scale=1344:768:force_original_aspect_ratio=decrease,pad=1344:768:(ow-iw)/2:(oh-ih)/2",
+            "-c:v", "libx264", "-preset", "medium", "-crf", "23",
+            video_path,
+        ], check=True, capture_output=True)
+        os.remove(temp_video_path)
