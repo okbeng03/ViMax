@@ -38,9 +38,12 @@ image_to_image_workflow_path = "workflows/flux2_klein_8image.json"
 image_to_image_ui_workflow_path = "workflows/flux2_klein_8image_ui.json"
 qwen_image_edit_workflow_path = "workflows/qwen_image_edit.json"
 qwen_image_edit_ui_workflow_path = "workflows/qwen_image_edit_ui.json"
+qwen_image_edit_camera_workflow_path = "workflows/qwen-edit-multiple-angles.json"
+qwen_image_edit_camera_ui_workflow_path = "workflows/qwen-edit-multiple-angles_ui.json"
 text_to_image_output_node_ids = ["9"]
 image_to_image_output_node_ids = ["94"]
 qwen_image_edit_output_node_ids = ["14"]
+qwen_image_edit_camera_output_node_ids = ["117"]
 max_noise = 2**50 - 1
 
 class ImageGeneratorComfyUIFlux:
@@ -104,6 +107,39 @@ class ImageGeneratorComfyUIFlux:
         scale_node["widgets_values"][7] = width
         noise_node = next((node for node in nodes if node["id"] == 7), None)
         noise_node["widgets_values"][0] = random.randint(1, max_noise)
+        
+        return workflow, ui_workflow
+
+    async def load_qwen_edit_camera_workflow(self, runner: ComfyUIWorkflowRunner, prompt: str, reference_image_paths: List[str] = None, width: int = 2048, height: int = 2048) -> dict[str, Any]:
+        """加载Qwen场景一致性编辑工作流"""
+        
+        workflow = runner.load_workflow(qwen_image_edit_camera_workflow_path)
+        workflow["117"]["inputs"]["filename_prefix"] = str(uuid.uuid4())
+        workflow["112"]["inputs"]["prompt"] = prompt
+        workflow["116"]["inputs"]["longer_edge"] = width
+        workflow["106"]["inputs"]["seed"] = random.randint(1, max_noise)
+        
+        image1 = reference_image_paths[0]
+        image1_name = await runner.upload_image(image1)
+        workflow["41"]["inputs"]["image"] = image1_name
+        
+        # image2 = reference_image_paths[1]
+        # image2_name = await runner.upload_image(image2)
+        # workflow["11"]["inputs"]["image"] = image2_name
+        
+        # ui
+        ui_workflow = runner.load_workflow(qwen_image_edit_camera_ui_workflow_path)
+        nodes = ui_workflow["nodes"]
+        output_node = next((node for node in nodes if node["id"] == 117), None)
+        output_node["widgets_values"][0] = str(uuid.uuid4())
+        positive_node = next((node for node in nodes if node["id"] == 112), None)
+        positive_node["widgets_values"][0] = prompt
+        scale_node = next((node for node in nodes if node["id"] == 116), None)
+        scale_node["widgets_values"][0] = width
+        noise_node = next((node for node in nodes if node["id"] == 106), None)
+        noise_node["widgets_values"][0] = random.randint(1, max_noise)
+        image_node = next((node for node in nodes if node["id"] == 41), None)
+        image_node["widgets_values"][0] = image1_name
         
         return workflow, ui_workflow
     
@@ -280,18 +316,29 @@ class ImageGeneratorComfyUIFlux:
         if workflow_name == "qwen_edit":
             logger.info("==========Using Qwen edit workflow================")
             workflow, ui_workflow = await self.load_qwen_edit_workflow(runner=runner, prompt=prompt, reference_image_paths=reference_image_paths, width=width, height=height)
+            workflow_path = qwen_image_edit_workflow_path
+            output_node_ids = qwen_image_edit_output_node_ids
+        elif workflow_name == "qwen_edit_camera":
+            logger.info("==========Using Qwen edit camera workflow================")
+            workflow, ui_workflow = await self.load_qwen_edit_camera_workflow(runner=runner, prompt=prompt, reference_image_paths=reference_image_paths, width=width, height=height)
+            workflow_path = qwen_image_edit_camera_workflow_path
+            output_node_ids = qwen_image_edit_camera_output_node_ids
         else:
             if reference_image_paths:
                 logger.info("==========Using reference images for style consistency================")
                 workflow, ui_workflow = await self.load_i2i_workflow(runner=runner, prompt=prompt, reference_image_paths=reference_image_paths, width=width, height=height)
+                workflow_path = image_to_image_workflow_path
+                output_node_ids = image_to_image_output_node_ids
             else:
                 workflow, ui_workflow = await self.load_t2i_workflow(runner=runner, prompt=prompt, width=width, height=height)
+                workflow_path = text_to_image_workflow_path
+                output_node_ids = text_to_image_output_node_ids
         # print("========================\n", json.dumps(workflow, indent=4), "\n========================")
         # 执行工作流
         outputs = await runner.run(
-            workflow_path=image_to_image_workflow_path if reference_image_paths else text_to_image_workflow_path,
+            workflow_path=workflow_path,
             workflow=workflow,
-            output_node_ids=image_to_image_output_node_ids if reference_image_paths else text_to_image_output_node_ids,
+            output_node_ids=output_node_ids,
             ui_workflow=ui_workflow,
         )
         # 提取输出路径
