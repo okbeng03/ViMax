@@ -100,6 +100,7 @@ class VideoGeneratorComfyUILTX:
         duration: Literal[5, 10] = 5,
         audio_name: Optional[str] = None,
         use_xianxia_lora: bool = False,
+        is_small_people: bool = False,
     ) -> dict[str, Any]:
         """
         加载首帧工作流
@@ -122,6 +123,9 @@ class VideoGeneratorComfyUILTX:
         # if prompt.startswith("Two shots. The transition between the shots is a cut to. The style of the two shots should be consistent."):
         if not use_xianxia_lora:
             workflow["338"]["inputs"]["model"] = ["279", 0]
+
+        if is_small_people:
+            workflow["316"]["inputs"]["scale_to_length"] = 2560
         
         if audio_name:
             # 替换音频
@@ -154,6 +158,10 @@ class VideoGeneratorComfyUILTX:
         if not use_xianxia_lora:
             xianxia_node = next((node for node in nodes if node["id"] == 337), None)
             xianxia_node["mode"] = 4
+
+        if is_small_people:
+            scale_node = next((node for node in nodes if node["id"] == 316), None)
+            scale_node["widgets_values"][7] = 2560
         
         if audio_name:
             # 替换音频
@@ -173,10 +181,11 @@ class VideoGeneratorComfyUILTX:
         reference_image_paths: Optional[List[str]] = None,
         resolution: Literal["480p", "720p", "1080p"] = "720p",
         aspect_ratio: str = "16:9",
-        fps: Literal[16, 24] = 16,
-        duration: Literal[5, 10] = 5,
+        fps: int = 16,
+        duration: int = 5,
         audio_name: Optional[str] = None,
         use_xianxia_lora: bool = False,
+        is_small_people: bool = False,
     ) -> dict[str, Any]:
         """
         加载多帧工作流
@@ -202,6 +211,9 @@ class VideoGeneratorComfyUILTX:
         else:
             # 没有音频，直接连接采样输出的audio
             workflow["649"]["inputs"]["audio"] = ["648", 0]
+
+        if is_small_people:
+            workflow["700"]["inputs"]["scale_to_length"] = 2560
         
         # 图片处理
         first_frame = {
@@ -286,6 +298,10 @@ class VideoGeneratorComfyUILTX:
             xianxia_node = next((node for node in nodes if node["id"] == 725), None)
             xianxia_node["mode"] = 4
 
+        if is_small_people:
+            scale_node = next((node for node in nodes if node["id"] == 700), None)
+            scale_node["widgets_values"][7] = 2560
+
         return workflow, ui_workflow
     
     
@@ -297,9 +313,10 @@ class VideoGeneratorComfyUILTX:
         audio_path: Optional[str] = None,
         resolution: Literal["480p", "720p", "1080p"] = "720p",
         aspect_ratio: str = "16:9",
-        fps: Literal[16, 24] = 24,
+        fps: int = 15,
         duration: int = 5,
         use_xianxia_lora: bool = False,
+        is_small_people: bool = False,
     ) -> VideoOutput:
         """
         生成单个视频
@@ -363,6 +380,7 @@ class VideoGeneratorComfyUILTX:
                 duration=duration,
                 audio_name=audio_name,
                 use_xianxia_lora=use_xianxia_lora,
+                is_small_people=is_small_people,
             )
         else:
             logger.info("============Using first frame workflow============")
@@ -376,6 +394,7 @@ class VideoGeneratorComfyUILTX:
                 duration=duration,
                 audio_name=audio_name,
                 use_xianxia_lora=use_xianxia_lora,
+                is_small_people=is_small_people,
             )
 
         # 执行工作流
@@ -384,7 +403,7 @@ class VideoGeneratorComfyUILTX:
             workflow=workflow,
             output_node_ids=mutil_frame_output_node_ids if len_reference_image_paths >= 2 else first_frame_output_node_ids,
             ui_workflow=ui_workflow,
-            # timeout=60 * 10,  # 10 分钟超时
+            timeout=3000,  # 10 分钟超时
         )
         
         # 提取输出路径
