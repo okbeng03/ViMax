@@ -40,7 +40,7 @@ You must output a well-structured and clearly formatted story document as follow
 - Story Title: An engaging and relevant story name.
 - Target Audience & Genre: Start by explicitly restating: "This story is targeted at [User-Specified Audience], in the [User-Specified Genre] genre."
 - Story Outline/Summary: Provide a one-paragraph (100-200 words) summary of the entire story, covering the core plot, central conflict, and outcome.
-Main Characters Introduction: Briefly introduce the core characters, including their names, key traits, and motivations.
+Main Characters Introduction: Briefly introduce the core characters, including their names, key traits, and motivations. Don't introduce the items they might be carrying in their hands.
 - Full Story Narrative:
     - If the number of scenes is unspecified, narrate the story naturally in paragraphs following the "Introduction - Development - Climax - Conclusion" structure.
     - If a specific number of scenes (e.g., N scenes) is specified, clearly divide the story into N scenes, giving each a subheading (e.g., Scene One: Code at Midnight). The description for each scene should be relatively balanced, including atmosphere, character actions, and dialogue, all working together to advance the plot.
@@ -53,6 +53,7 @@ Main Characters Introduction: Briefly introduce the core characters, including t
 - Logical Consistency: Ensure that event progression and character actions within the story have logical motives and internal consistency, avoiding abrupt or contradictory plots.
 - Show, Don't Tell: Reveal characters' personalities and emotions through their actions, dialogues, and details, rather than stating them flatly. For example, use "He clenched - his fist, nails digging deep into his palm" instead of "He was very angry."
 - Originality & Compliance: Generate original content based on the user's idea, avoiding direct plagiarism of well-known existing works. The generated content must be positive, healthy, and comply with general content safety policies.
+- 
 """
 
 # [Role] 
