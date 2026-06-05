@@ -328,7 +328,7 @@ class ComfyUIWorkflowRunner:
             f.write(json.dumps(task.workflow, ensure_ascii=False, indent=4))
             
         if task.ui_workflow:
-            with open(os.path.join(f"{working_dir}/workflows", f"{prompt_id}_ui.json"), 'w', encoding='utf-8') as f:
+            with open(os.path.join(f"{working_dir}/workflows", f"{workflow_name}_{prompt_id}_ui.json"), 'w', encoding='utf-8') as f:
                 f.write(json.dumps(task.ui_workflow, ensure_ascii=False, indent=4))
         
         # 等待执行完成，传入开始时间用于计算耗时
@@ -358,81 +358,73 @@ class ComfyUIWorkflowRunner:
     async def _wait_for_outputs(self, prompt_id: str, timeout: int, workflow_start_time) -> dict[int | str, Any]:
         """
         等待并获取输出
-        
-        注意：新格式中节点 ID 是整数，outputs 字典的 key 也应该是整数
-        
+
+        先通过 WebSocket 实时等待；若 WS 超时则回退至 /history/{prompt_id} 拉取结果。
+
         Args:
             prompt_id: prompt 标识符
-            timeout: 超时时间
+            timeout: 超时时间（秒）
             workflow_start_time: 工作流开始执行的时间戳（用于计算总耗时）
         """
 
         ws_url = f"{self.base_url.replace('http', 'ws')}/ws?clientId={self.client_id}"
-        
+
         outputs: dict[int | str, Any] = {}
-        
+
         # 使用线程方式连接 WebSocket（asyncio 版本需要在单独线程中运行）
         import threading
-        result_holder: dict[str, Any] = {"outputs": None, "error": None, "finished": False}
-        
-        # 标准化输出节点 ID（统一为整数）
-        normalized_output_ids: set[int | str] = set()
-        for oid in self.output_node_ids:
-            normalized_output_ids.add(oid)
-            
+        result_holder: dict[str, Any] = {"outputs": None, "error": None, "finished": False, "ws_timed_out": False}
+
+        # 标准化输出节点 ID
+        normalized_output_ids: set[int | str] = set(self.output_node_ids)
+
         ws_connect_time = None
-        
+
         def ws_receiver():
             nonlocal ws_connect_time
             try:
                 with ws_connect(ws_url) as ws:
                     while not result_holder["finished"]:
                         message = ws.recv()
-                        
+
                         # 处理二进制消息（跳过图片等二进制数据）
                         if isinstance(message, bytes):
                             continue
-                        
+
                         data = json.loads(message)
                         msg_type = data.get("type")
                         msg_data = data.get("data", {})
-                        
+
                         if msg_data.get("prompt_id") != prompt_id:
                             continue
-                        
-                        # 处理执行进度
+
                         if msg_type == "executing":
                             node = msg_data.get("node")
                             if node:
                                 logger.info(f"正在执行节点：{node}")
-                                
+
                         elif msg_type == "progress":
                             value = msg_data.get("value", 0)
                             max_val = msg_data.get("max", 100)
                             logger.info(f"进度：{value}/{max_val}")
-                            
                             if not ws_connect_time:
                                 ws_connect_time = time.time()
-                        
-                        # 处理执行完成
+
                         elif msg_type == "executed":
                             node_id = msg_data.get("node")
                             output = msg_data.get("output", {})
                             if output:
                                 outputs[node_id] = output
-                        
+
                         elif msg_type == "execution_success":
-                            # 计算并输出耗时
                             end_time = time.time()
                             if workflow_start_time:
-                                total_duration = end_time - workflow_start_time
-                                logger.info(f"Prompt {prompt_id} 执行成功，总耗时: {total_duration:.2f} 秒")
+                                logger.info(f"Prompt {prompt_id} 执行成功，总耗时: {end_time - workflow_start_time:.2f} 秒")
                             else:
                                 logger.info(f"Prompt {prompt_id} 执行成功")
                             result_holder["finished"] = True
                             break
-        
-                        # 处理错误
+
                         elif msg_type == "execution_error":
                             result_holder["error"] = msg_data
                             result_holder["finished"] = True
@@ -444,30 +436,117 @@ class ComfyUIWorkflowRunner:
                             result_holder["finished"] = True
                             logger.info(f"Prompt {prompt_id} 执行完成。结束时间: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()))}")
                             break
-                            
+
             except Exception as e:
                 result_holder["error"] = str(e)
                 result_holder["finished"] = True
-        
+
         # 在后台线程运行 WebSocket 接收
         ws_thread = threading.Thread(target=ws_receiver)
         ws_thread.start()
-        
-        # 等待完成（带超时）
-        timeout = timeout  # 5 分钟超时
 
+        # 等待完成（带超时）
         while not result_holder["finished"]:
             await asyncio.sleep(0.5)
             if ws_connect_time and time.time() - ws_connect_time > timeout:
                 result_holder["finished"] = True
-                result_holder["error"] = f"Timeout waiting for workflow completion:: {timeout}s。结束时间: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()))}"
-        
-        ws_thread.join(timeout=5)
-        
-        if result_holder["error"]:
-            raise RuntimeError(f"Workflow execution error: {result_holder['error']}")
+                result_holder["ws_timed_out"] = True
+                logger.warning(
+                    f"Prompt {prompt_id} WebSocket 超时 ({timeout}s)，"
+                    f"结束时间: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()))}"
+                )
 
-        return result_holder["outputs"] or outputs
+        ws_thread.join(timeout=5)
+
+        # ── WS 正常完成 ──
+        if not result_holder["ws_timed_out"]:
+            if result_holder["error"]:
+                raise RuntimeError(f"Workflow execution error: {result_holder['error']}")
+            return result_holder["outputs"] or outputs
+
+        # ── WS 超时，回退到 /history API ──
+        logger.info(f"Prompt {prompt_id} WS 超时，尝试从 /history/{prompt_id} 获取结果...")
+
+        # 1. 先检测 ComfyUI 是否正常运行
+        comfyui_healthy = await self._check_comfyui_health()
+        if not comfyui_healthy:
+            raise RuntimeError(
+                f"ComfyUI 服务不可达 ({self.base_url})，且 WebSocket 已超时。"
+                f"Prompt {prompt_id} 状态未知。"
+            )
+
+        # 2. 从 /history/{prompt_id} 获取输出
+        history_outputs = await self._fetch_history_outputs(prompt_id)
+        if history_outputs is not None:
+            end_time = time.time()
+            if workflow_start_time:
+                logger.info(
+                    f"Prompt {prompt_id} 从 /history 恢复结果成功，"
+                    f"总耗时: {end_time - workflow_start_time:.2f} 秒"
+                )
+            return history_outputs
+
+        # 3. history 中也无结果 → 真正失败
+        raise RuntimeError(
+            f"Workflow {prompt_id} 超时 ({timeout}s)，"
+            f"且 /history 中无有效输出。可能仍在执行中或已失败。"
+        )
+
+    async def _check_comfyui_health(self) -> bool:
+        """检测 ComfyUI 服务是否正常运行"""
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(f"{self.base_url}/", timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                    return resp.status == 200
+        except Exception:
+            return False
+
+    async def _fetch_history_outputs(self, prompt_id: str) -> dict[int | str, Any] | None:
+        """从 /history/{prompt_id} 获取已完成任务的输出"""
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    f"{self.base_url}/history/{prompt_id}",
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as resp:
+                    if resp.status != 200:
+                        logger.warning(f"/history/{prompt_id} 返回 {resp.status}")
+                        return None
+                    data = await resp.json()
+        except Exception as e:
+            logger.warning(f"请求 /history/{prompt_id} 失败: {e}")
+            return None
+
+        # ComfyUI history 格式: {prompt_id: {"outputs": {node_id: {...}}, "status": {...}}}
+        entry = data.get(prompt_id)
+        if not entry:
+            logger.warning(f"/history/{prompt_id} 中无此 prompt 记录")
+            return None
+
+        status = entry.get("status", {})
+        if status.get("status_str") == "error":
+            logger.warning(f"Prompt {prompt_id} 在 history 中状态为 error")
+            return None
+
+        raw_outputs = entry.get("outputs", {})
+        if not raw_outputs:
+            logger.warning(f"Prompt {prompt_id} 在 history 中无 outputs")
+            return None
+
+        # 过滤出需要的输出节点
+        filtered: dict[int | str, Any] = {}
+        for oid in self.output_node_ids:
+            # history 中 key 是字符串，需要兼容 int key
+            val = raw_outputs.get(oid) or raw_outputs.get(str(oid))
+            if val is not None:
+                filtered[oid] = val
+
+        if not filtered:
+            logger.warning(f"Prompt {prompt_id} 的 /history 输出中未找到目标节点: {self.output_node_ids}")
+            return None
+
+        logger.info(f"Prompt {prompt_id} 成功从 /history 恢复 {len(filtered)} 个节点输出")
+        return filtered
     
     def get_output_paths(self, outputs: dict[int | str, Any]) -> dict[int | str, Any]:
         """从执行结果中提取输出文件路径"""
