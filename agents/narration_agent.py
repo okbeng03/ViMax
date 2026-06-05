@@ -161,16 +161,24 @@ class NarrationAgent:
         concat_parts = []
         for i, item in enumerate(narration):
             if item.narration_text:
+                adjusted_path = os.path.join(cache_dir, f"narration_adjusted_{i}.flac")
                 temp_path = os.path.join(cache_dir, f"narration_temp_{i}.flac")
             
-                if os.path.exists(temp_path):
-                    concat_parts.append(temp_path)
+                if os.path.exists(adjusted_path):
+                    concat_parts.append(adjusted_path)
+                    probe_cmd = [
+                        "ffprobe", "-v", "error", "-show_entries", "format=duration",
+                        "-of", "default=noprint_wrappers=1:nokey=1", adjusted_path
+                    ]
+                    actual_duration = float(subprocess.run(probe_cmd, capture_output=True, text=True).stdout.strip())
+                    item.estimated_duration = actual_duration
                 else:
-                    audio_output = await self.audio_generator.generate_single_audio(
-                        prompt=item.narration_text,
-                        character="旁白"
-                    )
-                    audio_output.save(temp_path)
+                    if not os.path.exists(temp_path):
+                        audio_output = await self.audio_generator.generate_single_audio(
+                            prompt=item.narration_text,
+                            character="旁白"
+                        )
+                        audio_output.save(temp_path)
                     
                     # 使用 ffmpeg 使音频时长等于 estimated_duration
                     # 获取音频实际时长
@@ -188,8 +196,8 @@ class NarrationAgent:
                             
                             if remaining_duration > 0.3:
                                 estimated_dur = min(actual_duration, (item.shot_duration - (item.start_time or 0) - 0.3))
+                                item.estimated_duration = estimated_dur
                         
-                        adjusted_path = os.path.join(cache_dir, f"narration_adjusted_{i}.flac")
                         # 计算播放速度：目标时长/实际时长
                         speed = actual_duration / estimated_dur
                         subprocess.run([
@@ -200,7 +208,7 @@ class NarrationAgent:
                         temp_path = adjusted_path
                     
                     concat_parts.append(temp_path)
-            
+
             # 前置静音
             if item.start_time is not None and item.start_time > 0:
                 silence_before = os.path.join(cache_dir, f"silence_before_{i}.flac")
