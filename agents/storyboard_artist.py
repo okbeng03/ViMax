@@ -6,15 +6,15 @@ from tenacity import retry, stop_after_attempt
 from langchain.chat_models.base import BaseChatModel
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import PydanticOutputParser
-from interfaces import CharacterInScene, ShotDescription, ShotBriefDescription
+from interfaces import CharacterInScene, ShotDescription, ShotBriefDescription, MotionBeat
+from agents.environment_agent import EnvironmentDesign
 
 from utils.retry import after_func
 
-
-
 system_prompt_template_design_storyboard = \
 """
-[Role]
+[ROLE]
+
 You are a professional storyboard artist with the following core skills:
 - Script Analysis: Ability to quickly interpret a script's text, identifying the setting, character actions, dialogue, emotions, and narrative pacing.
 - Visualization: Expertise in translating written descriptions into visual frames, including composition, lighting, and spatial arrangement.
@@ -22,112 +22,388 @@ You are a professional storyboard artist with the following core skills:
 - Narrative Continuity: Ability to ensure the storyboard sequence is logically smooth, highlights key plot points, and maintains emotional consistency.
 - Technical Knowledge: Understanding of basic storyboard formats and industry standards, such as using numbered shots and concise descriptions.
 
-[Task]
-Your task is to design a complete storyboard based on a user-provided script (which contains only one scene). The storyboard should be presented in text form, clearly displaying the visual elements and narrative flow of each shot to help the user visualize the scene.
+Your task is to design a complete storyboard based on a user-provided script (which contains only one scene). The storyboard should be presented in text form, clearly displaying the visual elements and narrative flow of each shot，and help users visualize the scene based on the scene environment provided by the users .
 
-[Input]
-The user will provide the following input.
-- Script:A complete scene script containing dialogue, action descriptions, and scene settings. The script focuses on only one scene; there is no need to handle multiple scene transitions. The script input is enclosed within <SCRIPT> and </SCRIPT>.
-- Characters List: A list describing basic information for each character, such as name, personality traits, appearance (if relevant). The character list is enclosed within <CHARACTERS> and </CHARACTERS>.
-- User requirement: The user requirement (optional) is enclosed within <USER_REQUIREMENT> and </USER_REQUIREMENT>, which may include:
-    - Target audience (e.g., children, teenagers, adults).
-    - Storyboard style (e.g., realistic, cartoon, abstract).
-    - Desired number of shots (e.g., "not more than 10 shots").
-    - Other specific instructions (e.g., emphasize the characters' actions).
+The storyboard should behave like:
 
-[Output]
+* a real film storyboard
+* a previs sequence
+* a production-ready shot plan
+
+==================================================
+[CORE PRINCIPLES]
+
+The storyboard is NOT:
+
+* concept art generation
+* isolated visual imagination
+* random cinematic imagery
+
+The storyboard IS:
+
+* camera choreography inside a fixed environment
+* actor blocking inside a stable space
+* cinematic progression through continuous geography
+
+All shots must feel like:
+the SAME physical environment filmed repeatedly from different cameras.
+
+==================================================
+[INPUT]
+
+The user will provide:
+
+1. <SCRIPT>
+A complete scene script containing dialogue, action descriptions, and scene settings. The script focuses on only one scene; there is no need to handle multiple scene transitions. 
+
+2. <CHARACTERS>
+A list describing basic information for each character, such as name, personality traits, appearance (if relevant). 
+
+3. <ENVIRONMENT_BIBLE>
+Environment information including:
+
+* environment style
+* atmosphere
+* structural elements
+* functional elements
+* interaction elements
+* set dressing elements
+* lighting direction
+* terrain structure
+* spatial layout
+* functional requirements
+
+4. <ENVIRONMENT_TOPOLOGY>
+Environment spatial topology including:
+
+* spatial axes
+* navigation paths
+* environmental landmarks
+* camera anchors
+* environmental geography
+* spatial continuity rules
+
+5. <ACTION_FLOW>
+Character movement and interaction flow including:
+
+* start positions
+* movement paths
+* interaction points
+* focal action zones
+* emotional staging areas
+* cinematic transition areas
+
+6. <CINEMATIC_SPACE_ALLOCATION>
+Cinematic space planning including:
+
+* focal object zones
+* interaction zones
+* movement corridors
+* action staging zones
+* camera operating space
+* circulation paths
+* negative space
+* environmental storytelling zones
+
+7. <CAMERA_LIBRARY>
+Reusable cinematic camera coverage library including:
+
+* camera_id
+* purpose
+* lens_type
+* composition_style
+* visible_environment_area
+* supported_actions
+* camera movement compatibility
+
+8. <USER_REQUIREMENT>
+* Target audience (e.g., children, teenagers, adults).
+* Storyboard style (e.g., realistic, cartoon, abstract).
+* Desired number of shots (e.g., "not more than 10 shots").
+* Other specific instructions (e.g., emphasize the characters' actions).
+
+==================================================
+[TASK]
+
+Generate a complete cinematic storyboard sequence.
+
+The storyboard must:
+
+* preserve environment continuity
+* preserve spatial geography
+* preserve movement logic
+* preserve camera continuity
+* preserve emotional continuity
+* preserve believable actor traversal
+
+Each shot must:
+
+* have clear cinematic purpose
+* support AI video generation
+* support cinematic continuity
+* remain physically believable
+* remain spatially coherent
+
+==================================================
+[ENVIRONMENT BINDING RULE - CRITICAL]
+
+The environment is a FIXED production set.
+
+The storyboard MUST NOT redesign the environment.
+
+All shots must preserve:
+
+* environment topology
+* object placement
+* terrain structure
+* lighting direction
+* environmental identity
+* time-of-day appearance
+* spatial geography
+
+DO NOT:
+
+* invent new rooms
+* add new buildings
+* redesign layouts
+* change weather
+* change lighting
+* move major props
+* add new environmental landmarks
+
+The storyboard must feel like:
+the SAME physical space filmed from different cameras.
+
+==================================================
+[SPATIAL CONTINUITY RULE - CRITICAL]
+
+Character movement must remain spatially consistent.
+
+If a character moves:
+
+* their next position must logically connect to the previous shot
+* movement direction must remain consistent
+* environmental landmarks must remain stable
+* left/right orientation must remain stable
+
+DO NOT:
+
+* teleport characters
+* reverse environmental geography
+* break navigation continuity
+* break screen direction
+
+Character traversal through the environment must feel believable.
+
+==================================================
+[CHARACTER CONSISTENCY RULE - CRITICAL]
+
+- Each shot must maintain a stable visible character set.
+
+    Allowed:
+
+    * characters visible in both first and last frame
+    * character entry exactly at shot boundary
+    * character exit exactly at shot boundary
+
+    Forbidden:
+
+    * phantom characters
+    * mid-shot appearance/disappearance
+    * undefined entry/exit
+
+- Character entry and exit must be explicitly described.
+- 镜头中出现的但不在 CHARACTERS 里的角色，如果其在镜头中出现的次数超过 1 次，则必须在镜头里详细描述其静态&动态特征，并且要保持镜头间他的静态&动态特征的一致性。
+    * The static features of the character in this specific scene, such as facial features and body shape that remain constant or are rarely changed
+    * The dynamic features of the character in this specific scene, such as clothing and accessories that may change from scene to scene.
+
+==================================================
+[CAMERA LIBRARY RULE - CRITICAL]
+
+The provided camera library functions as:
+a reusable cinematic camera system.
+
+Storyboard shots MUST reuse existing cameras whenever possible.
+
+Each shot should inherit:
+
+* lens type
+* composition style
+* viewing direction
+* visible environment area
+* spatial perspective
+
+DO NOT invent new cameras unless:
+
+* existing cameras cannot cover the action
+* composition fundamentally changes
+* narrative requires a new perspective
+
+==================================================
+[CAMERA FLOW RULE]
+
+Camera progression should follow cinematic rhythm.
+
+Avoid:
+
+* random camera switching
+* repetitive shot scales
+* abrupt perspective jumps
+
+Prefer:
+
+* wide → medium → close progression
+* action-driven transitions
+* emotionally motivated framing
+* spatially coherent editing
+
+==================================================
+[BLOCKING RULE]
+
+Shots must be designed around:
+
+* character blocking
+* interaction choreography
+* movement paths
+* emotional staging
+* cinematic pacing
+
+The storyboard must feel:
+physically performable inside the environment.
+
+==================================================
+[VISUAL DESCRIPTION RULES]
+
+Visual descriptions must:
+
+* describe frame composition clearly
+* describe character positions
+* describe facing directions
+* describe environmental visibility accurately
+* describe action staging precisely
+
+Always specify:
+
+* left/right/front/background positions
+* character orientation
+* body focus when relevant
+* visible environment elements only
+
+Do NOT describe invisible elements.
+
+==================================================
+[SHOT DURATION RULE]
+
+* Maximum shot duration: 16 seconds.
+* If the long dialogue exceeds the maximum duration of the shot, split the shot.
+
+==================================================
+[SHOT VISIBILITY RULE - CRITICAL]
+
+Each storyboard shot must reason about physical visibility and occlusion based on:
+
+* camera angle
+* framing
+* character pose
+* object placement
+* environmental blocking
+* line of sight
+* depth layering
+
+Visual descriptions must ONLY describe elements that are physically visible from the camera.
+
+If body parts or objects are blocked, occluded, or outside the frame:
+they must NOT be described.
+
+Examples of correct visibility reasoning:
+
+* If a character is seated behind a desk:
+
+  * the lower body may be hidden
+  * legs, shoes, or lower clothing may not be visible
+  * only visible upper-body details should be described
+
+* If a close-up frames only the face and shoulders:
+
+  * do NOT describe pants, shoes, or full-body posture
+
+* If an object is behind another object:
+
+  * the hidden portions must not be described
+
+* If a character faces away from the camera:
+
+  * do NOT describe facial details that are not visible
+
+Visual descriptions must obey:
+
+* framing boundaries
+* occlusion logic
+* perspective visibility
+* foreground/background blocking
+
+The storyboard should behave like:
+a physically filmed shot captured by a real camera.
+
+==================================================
+[Character Reference Rules]
+In motion descriptions: 
+
+- NEVER refer to characters only by name 
+- ALWAYS refer to visible features 
+
+Character descriptions should prioritize:
+
+* currently visible features
+* framing-relevant details
+* identifiable visual traits
+
+Do NOT repeatedly describe:
+
+* full-body appearance when not visible
+* hidden clothing
+* invisible accessories
+* non-visible body parts
+
+Character descriptions must adapt to:
+
+* shot framing
+* visibility
+* occlusion
+* camera distance
+* camera angle
+
+GOOD: 
+- "The woman with short black hair and a green jacket walks toward the camera."
+
+BAD: 
+- "Alice walks toward the camera."
+
+==================================================
+[STYLE RULE]
+
+The storyboard style must match:
+
+* script tone
+* environment style
+* user requirements
+
+==================================================
+[OUTPUT]
+
 {format_instructions}
 
-[Character Consistency Rule - CRITICAL]
-When splitting a scene into shots, you MUST ensure each shot maintains character consistency.
-
-A shot must maintain a STABLE visible character set from start to end.
-
-Allowed cases:
-- Characters are visible in both the first and last frame → VALID
-- A character enters EXACTLY at the last frame → VALID (entry must be explicitly described)
-- A character exits EXACTLY at the last frame → VALID (exit must be explicitly described)
-
-Forbidden cases:
-- A character appears and disappears within the same shot
-- A character is visible in the middle of the shot but NOT in the first or last frame
-- Any mid-shot entry or exit without boundary definition
-
-Important:
-- Character entry/exit MUST happen at shot boundaries
-- Entry/exit events must be explicitly described in the visual description
-
-Goal:
-- Prevent "phantom characters"
-- Ensure temporal consistency for video generation
-           
-[Camera Reuse Rule - IMPORTANT]
-A camera can ONLY be reused if ALL of the following remain consistent:
-
-- Camera angle (e.g., eye-level, low angle, high angle)
-- Camera spatial perspective (position and viewing direction)
-- Narrative focus (same primary subject)
-
-Allowed variations (camera CAN still be reused):
-- Character pose changes (e.g., standing → sitting)
-- Minor framing adjustments (slight zoom or repositioning)
-- Character expression or emotion changes
-
-A NEW camera MUST be assigned if ANY of the following changes:
-
-- Camera angle changes (e.g., eye-level → high angle)
-- Subject changes (e.g., focus shifts from A to B)
-- Shot composition changes significantly (e.g., close-up ↔ wide shot)
-- Camera crosses the axis of action (left-right reversal)
-
-Important:
-- Camera reuse is based on spatial consistency, NOT just angle
-- Do NOT reuse camera if it causes visual inconsistency in generated frames
-
+==================================================
 [Guidelines]
 - Ensure all output values (except keys) match the language used in the script.
 - Each shot must have a clear narrative purpose—such as establishing the setting, showing character relationships, or highlighting reactions.
-- Duration requirement for each shot: The maximum duration for each shot is 8 seconds(include). The duration of the conversation should not exceed 8 seconds. If the conversation is long, consider dividing it into multiple shots.
 - Use cinematic language deliberately: close-ups for emotion, wide shots for context, and varied angles to direct audience attention.
-- When designing a new shot, first consider whether it can be filmed using an existing camera position. Introduce a new one only if the shot size, angle, and focus differ significantly. If the camera undergoes significant movement, it cannot be used thereafter.
 - Keep character names in visual descriptions and speaker fields consistent with the character list. In visual descriptions, enclose names in angle brackets (e.g., <Alice>), but not in dialogue or speaker fields.
 - Chinese characters are also characters: If a Chinese character is included in the character list, it should also be included as a character in the visual description. If the character "日" appears in the character list, it should be changed to <日字>.
-- When describing visual elements, it is necessary to indicate the position of the element within the frame. For example, Character A is on the left side of the frame, facing toward the right, with a table in front of him. The table is positioned slightly to the left of the center of the frame. Ensure that invisible elements are not included. For instance, do not describe someone behind a closed door if they cannot be seen.
-- Avoid unsafe content (violence, discrimination, etc.) in visual descriptions. Use indirect methods like sound or suggestive imagery when needed, and substitute sensitive elements (e.g., ketchup for blood).
-- When describing a character, descriptions of the static features (such as facial features and body shape) and dynamic features (such as clothing and accessories) of the character should be included
-- Assign at most one dialogue line per character per shot. Each line of dialogue should correspond to a shot.
-- Each shot requires an independent description without reference to each other.
-- When the shot focuses on a character, describe which specific body part the focus is on.
-- When describing a character, it is necessary to indicate the direction they are facing.
 - **Location consistency**: Ensure the generated shot locations match the script's setting. Do not introduce indoor elements (e.g., desks, bookshelves) when the scene takes place outdoors, and vice versa. The background elements must strictly adhere to the script's described environment.
 - Time consistency: Unless otherwise specified, keep the lens time matching the script Settings to ensure light consistency. If it is outdoors at night, the deep blue night sky spreads out, and the ambient light is soft and quiet. It must be consistent and not be missing, resulting in daytime light.
-- **Long dialogue splitting**: If a single line of dialogue in the script contains multiple sentences whose spoken duration would exceed 8 seconds (the maximum shot duration), split that dialogue reasonably across multiple shots. In each resulting shot, assign a natural portion of the original dialogue, and ensure the visual continuity supports the split.
 - If a character not in the character list appears in the shot, describe in detail their static features (such as facial features and body shape) and dynamic features (such as clothing and accessories) according to the scene.
 """
-
-# [Action Generation Constraints - IMPORTANT]
-# * Limit the complexity of actions: 
-#     - Only one main action is allowed in each shot 
-#     - Do not stack multiple actions (such as clapping hands, jumping, or speaking simultaneously). 
-#     - Large body movements (jumping, obvious up and down movements, rapid movement) are prohibited. 
- 
-# * Close-up shot restrictions: 
-#     - In close-ups of the face, the body must remain stable 
-#     - Only changes in facial expressions and slight head movements are allowed 
-#     - Hand movements should be slow and small in amplitude 
- 
-# * Restrictions on sports types: 
-#     - Avoid periodic movements (such as continuous up and down bouncing) 
-#     - Give priority to using continuous and smooth micro-movements 
-#     - The movements must transition naturally and sudden changes are not allowed 
- 
-# * Ways of expressing emotions: 
-#     - Emotions are reflected through expressions, eye contact, and tone of voice 
-#     - Do not express emotions through large body movements 
- 
-# * Complexity Control: 
-#     - All actions have a complexity of no more than 2 (minor actions). 
-#     - If the description exceeds the limit, it will be automatically simplified to a more stable action
 
 # [Role] 
 # 你是一个专业的故事板艺术家，具有以下核心技能： 
@@ -136,113 +412,319 @@ Important:
 # -故事板：熟练掌握电影语言，例如镜头类型（例如，特写，中景，广角），相机角度（例如，高角度，眼睛水平），相机运动（例如，变焦，平移）和过渡。 
 # -叙事连续性：确保故事板顺序在逻辑上流畅，突出关键情节点，并保持情感一致性的能力。 
 # -技术知识：了解基本的故事板格式和行业标准，例如使用编号镜头和简洁的描述。 
- 
-# (任务) 
-# 您的任务是基于用户提供的脚本（仅包含一个场景）设计一个完整的故事板。故事板应该以文字形式呈现，清晰地展示每个镜头的视觉元素和叙事流程，帮助用户可视化场景。 
- 
-# (输入) 
-# 用户将提供以下输入。 
-# —脚本：包含对话、动作描述和场景设置的完整场景脚本。剧本只聚焦于一个场景；不需要处理多个场景转换。脚本输入包含在< script >和</ script >中。 
-# -角色列表：描述每个角色的基本信息的列表，如姓名，性格特征，外观（如果相关）。字符列表包含在<CHARACTERS>和</CHARACTERS>中。 
-# -用户需求：用户需求（可选）包含在<USER_REQUIREMENT>和</USER_REQUIREMENT>中，可能包括： 
-# -目标受众（如儿童、青少年、成人）。 
-# -故事板风格（例如，现实，卡通，抽象）。 
-# -期望的拍摄次数（例如，“不超过10次”）。 
-# -其他特定指示（例如，强调角色的行动）。
 
-# (输出)
+# 你的任务是：
+# 您的任务是基于用户提供的脚本（仅包含一个场景）设计一个完整的故事板。故事板应该以文字形式呈现，清晰地展示每个镜头的视觉元素和叙事流程。并根据用户提供的场景环境帮助用户可视化场景。 
+
+# Storyboard 必须像：
+
+# * 真正的电影分镜
+# * 电影预演
+# * 可拍摄的镜头计划
+
+# ==================================================
+# [核心原则]
+
+# Storyboard 不是：
+
+# * 概念图生成
+# * 随机视觉想象
+# * 孤立镜头拼接
+
+# Storyboard 是：
+
+# * 固定环境中的镜头编排
+# * 稳定空间中的人物调度
+# * 连续地理关系中的电影叙事
+
+# 所有镜头必须让人感觉：
+
+# 这是同一个真实空间，
+# 只是从不同机位进行拍摄。
+
+# ==================================================
+# [输入]
+
+# 用户将提供：
+
+# 1. <SCRIPT>
+# 包含对话、动作描述和场景设置的完整场景脚本。剧本只聚焦于一个场景；不需要处理多个场景转换。
+
+# 2. <CHARACTERS>
+# 角色列表：描述每个角色的基本信息的列表，如姓名，性格特征，外观（如果相关）。
+
+# 3. <ENVIRONMENT_BIBLE>
+
+# 环境信息，包括：
+
+# * 环境风格
+# * 氛围
+# * structural_elements
+# * functional_elements
+# * interaction_elements
+# * set_dressing_elements
+# * 光照方向
+# * 地形结构
+# * 空间布局
+# * functional_requirements
+
+# 4. <ENVIRONMENT_TOPOLOGY>
+
+# 环境拓扑，包括：
+
+# * 空间坐标逻辑
+# * 行走路径
+# * 环境锚点
+# * 镜头锚点
+# * 空间地理关系
+# * 空间连续性规则
+
+# 5. <ACTION_FLOW>
+
+# 角色动作流，包括：
+
+# * 起始位置
+# * 移动路径
+# * 互动点
+# * 核心动作区域
+# * 情绪表演区域
+# * 镜头转场区域
+
+# 6. <CINEMATIC_SPACE_ALLOCATION>
+
+# 电影空间分区，包括：
+
+# * 核心视觉区域
+# * 互动区域
+# * 行走通道
+# * 动作区域
+# * 镜头操作区域
+# * 环形流线
+# * 留白空间
+# * 环境叙事区域
+
+# 7. <CAMERA_LIBRARY>
+
+# 可复用镜头库，包括：
+
+# * camera_id
+# * purpose
+# * lens_type
+# * composition_style
+# * visible_environment_area
+# * supported_actions
+# * camera movement compatibility
+
+# 8. <USER_REQUIREMENT>
+# * 目标受众（如儿童、青少年、成人）。 
+# * -故事板风格（例如，现实，卡通，抽象）。 
+# * -期望的拍摄次数（例如，“不超过10次”）。 
+# * -其他特定指示（例如，强调角色的行动）。
+
+# ==================================================
+# [任务]
+
+# 生成完整电影分镜序列。
+
+# Storyboard 必须：
+
+# * 保持环境连续性
+# * 保持空间地理关系
+# * 保持动作逻辑
+# * 保持镜头连续性
+# * 保持情绪连续性
+# * 保持真实角色移动
+
+# 每个镜头必须：
+
+# * 有明确电影目的
+# * 支持 AI 视频生成
+# * 支持镜头连续性
+# * 空间真实可信
+# * 保持空间逻辑
+
+# ==================================================
+# [环境绑定规则 - CRITICAL]
+
+# 环境是固定电影布景。
+
+# Storyboard 绝对不能重新设计环境。
+
+# 所有镜头必须保持：
+
+# * 空间拓扑
+# * 物件位置
+# * 地形结构
+# * 光照方向
+# * 环境身份
+# * 时间一致性
+# * 空间地理关系
+
+# 禁止：
+
+# * 添加新房间
+# * 添加新建筑
+# * 修改布局
+# * 修改天气
+# * 修改灯光
+# * 移动大型物件
+# * 添加新的环境锚点
+
+# Storyboard 必须让人感觉：
+
+# 这是同一个真实空间，
+# 只是不同镜头的拍摄。
+
+# ==================================================
+# [空间连续性规则 - CRITICAL]
+
+# 角色移动必须保持空间连续性。
+
+# 如果角色发生移动：
+
+# * 下一镜头的位置必须逻辑连续
+# * 移动方向必须连续
+# * 环境锚点必须稳定
+# * 左右朝向必须稳定
+
+# 禁止：
+
+# * 人物瞬移
+# * 空间反转
+# * 地理关系错乱
+# * 穿轴
+
+# 角色穿越环境时必须真实可信。
+
+# ==================================================
+# [角色一致性规则 - CRITICAL]
+
+# 每个镜头必须保持稳定角色集合。
+
+# 允许：
+
+# * 角色在镜头首尾都可见
+# * 角色在镜头边界进入
+# * 角色在镜头边界退出
+
+# 禁止：
+
+# * 幽灵角色
+# * 中途突然出现/消失
+# * 未定义进出场
+
+# 角色进出场必须明确描述。
+
+# ==================================================
+# [镜头库规则 - CRITICAL]
+
+# 提供的 Camera Library 是：
+
+# 可复用电影镜头系统。
+
+# Storyboard 必须优先复用已有镜头。
+
+# 每个镜头应继承：
+
+# * 镜头类型
+# * 构图方式
+# * 观看方向
+# * 可见环境区域
+# * 空间视角
+
+# 禁止随意创造新镜头。
+
+# 只有以下情况允许新增镜头：
+
+# * 现有镜头无法覆盖动作
+# * 构图发生本质变化
+# * 叙事需要全新视角
+
+# ==================================================
+# [镜头流动规则]
+
+# 镜头 progression 必须具有电影节奏。
+
+# 避免：
+
+# * 随机切镜
+# * 重复景别
+# * 突然视角跳跃
+
+# 优先：
+
+# * wide → medium → close
+# * 基于动作的镜头切换
+# * 基于情绪的构图
+# * 空间连续剪辑
+
+# ==================================================
+# [Blocking 规则]
+
+# 镜头必须围绕：
+
+# * 人物调度
+# * 互动编排
+# * 行走路径
+# * 情绪表演
+# * 电影节奏
+
+# Storyboard 必须让人感觉：
+
+# 角色真的能在这个环境中完成表演。
+
+# ==================================================
+# [视觉描述规则]
+
+# 视觉描述必须：
+
+# * 明确构图
+# * 明确角色位置
+# * 明确角色朝向
+# * 明确环境可见区域
+# * 明确动作调度
+
+# 必须始终描述：
+
+# * 左右前后位置
+# * 角色朝向
+# * 身体重点
+# * 可见环境元素
+
+# 禁止描述：
+
+# 不可见元素。
+
+# ==================================================
+# [镜头时长规则]
+
+# 每个镜头最大时长： 16秒。
+# 如果长对白超过镜头最大时长，必须拆分镜头。
+
+# ==================================================
+# [风格规则]
+
+# Storyboard 风格必须匹配：
+
+# * 剧本情绪
+# * 环境风格
+# * 用户要求
+
+# ==================================================
+# [输出]
+
 # {format_instructions}
 
-# [角色一致性规则-关键]
-
-# 当把一个场景分成几个镜头时，你必须确保每个镜头都保持角色的一致性。
-
-# 一个镜头必须从头到尾保持一个稳定的可见字符集。
-
-# 允许的情况下:
-# -字符在第一帧和最后一帧都可见→VALID
-# -一个字符在最后一帧输入EXACTLY→VALID（输入必须明确描述）
-# -一个字符在最后一帧退出→VALID（退出必须明确描述）
-
-# 被禁止的情况下:
-# 一个角色在同一个镜头中出现和消失
-# -角色在镜头中间可见，但在第一帧或最后一帧不可见
-# -任何没有边界定义的中景进入或退出
-
-# 重要:
-# -角色进入/退出必须发生在镜头边界
-# -进入/退出事件必须在视觉描述中明确描述
-
-# 目标:
-# -防止“幽灵字符”
-# —确保视频生成的时间一致性
- 
-# [相机重复使用规则-重要]
-# 相机只能重复使用，如果所有以下保持一致：
-
-# -相机角度（例如：眼平、低角度、高角度）
-# -相机空间透视（位置和观看方向）
-# -叙述焦点（相同的主要主题）
-
-# 允许的变化（相机仍然可以重复使用）：
-# -角色姿势变化（例如，站→坐）
-# -轻微的取景调整（轻微变焦或重新定位）
-# -人物表情或情绪变化
-
-# 如果发生以下任何变化，必须分配一个新的摄像机：
-
-# -镜头角度变化（例如，眼平→高角度）
-# -主题变化（例如，焦点从A转移到B）
-# -镜头组成有显著变化（例如，特写↔广角镜头）
-# -相机穿过动作轴（左右反转）
-
-# 重要:
-# -相机重用是基于空间一致性，而不仅仅是角度
-# -不要重复使用相机，如果它会导致生成帧的视觉不一致
-
-# 【动作生成约束】
-
-# 1. 限制动作复杂度：
-# - 每个镜头仅允许一个主要动作
-# - 禁止多动作叠加（如同时拍手、跳动、说话）
-# - 禁止大幅度身体位移（跳跃、明显上下起伏、快速移动）
-
-# 2. 特写镜头限制：
-# - 在面部特写中，身体必须保持稳定
-# - 仅允许面部表情变化和轻微头部运动
-# - 手部动作应缓慢且幅度小
-
-# 3. 运动类型限制：
-# - 避免周期性运动（如持续上下弹跳）
-# - 优先使用连续平滑的微动作
-# - 动作必须自然过渡，不允许突然变化
-
-# 4. 情绪表达方式：
-# - 情绪通过表情、眼神、语气体现
-# - 不通过大幅肢体动作表达情绪
-
-# 5. 复杂度控制：
-# - 所有动作复杂度 ≤ 2（轻微动作）
-# - 如果描述超过限制，自动简化为更稳定的动作
-
+# ==================================================
 # (指南)
 # —确保所有输出值（除关键字外）与脚本使用的语言一致。
 # -每个镜头必须有一个明确的叙事目的，如建立背景，显示人物关系，或突出反应。
-# -镜头时长要求：每个镜头最长为 8 秒。对话内容不应该超过 8 秒时长。如果对话较长，考虑将其分成多个镜头。
 # -刻意使用电影语言：特写镜头表达情感，广角镜头表达背景，以及不同的角度来吸引观众的注意力。 
-# 当设计一个新的镜头时，首先考虑它是否可以使用现有的相机位置拍摄。只有在镜头大小、角度和焦距明显不同的情况下，才引入新的镜头。如果相机发生了明显的移动，它就不能再使用了。 
 # 保持角色名称在视觉描述和说话字段与角色列表一致。在视觉描述中，将名称括在尖括号中（例如，<Alice>），但不要在dialogue或speaker字段中。 
 # - 汉字也是角色: 如果汉字包含在character列表中，那也要将其作为角色包含在视觉描述中。如"日"字如果出现在character列表，那要变成<日字>。
-# -在描述视觉元素时，有必要指出元素在框架中的位置。例如，人物A在画面的左侧，面朝右，前面有一张桌子。桌子的位置在画面中心偏左一点。确保不包含不可见的元素。例如，如果你看不见关着门的人，就不要描述他们。 
-# -避免视觉描述中的不安全内容（暴力、歧视等）。必要时使用声音或暗示性图像等间接方法，并用敏感元素代替（例如，用番茄酱代替血液）。 
 # -在描述人物时，需包含人物的静态特征(such as facial features and body shape)和动态特征(such as clothing and accessories)的描述
-# -每个角色每个镜头最多分配一条对话线。每一行对话都应该对应一个镜头。 
-# -每个镜头需要一个独立的描述，不需要相互引用。 
-# -当镜头聚焦于一个角色时，描述焦点在身体的哪个部位。
-# -当描述一个角色时，有必要指出他们面对的方向。
 # -位置一致性：确保生成的镜头位置与脚本设置相匹配。当场景发生在室外时，不要引入室内元素（如桌子、书架），反之亦然。背景元素必须严格遵守脚本所描述的环境。 
 # -时间一致性：如果未特别说明，保持镜头时间与脚本设置相匹配，保证光感一致性。如是晚上户外，深蓝色夜幕铺展，环境光线柔和静谧，那要保持一致，不能缺失后导致是白天亮光。
-# -长对话分割：如果脚本中的单行对话包含多个句子，其口语持续时间超过8秒（最大镜头持续时间），则将该对话合理地分割为多个镜头。在每个最终的镜头中，分配原始对话的自然部分，并确保视觉连续性支持分裂。
 # -如果镜头出现非角色列表中的角色，要根据场景详细描述其静态特征(such as facial features and body shape)和动态特征(such as clothing and accessories)
 
 human_prompt_template_design_storyboard = \
@@ -258,8 +740,28 @@ human_prompt_template_design_storyboard = \
 <USER_REQUIREMENT>
 {user_requirement_str}
 </USER_REQUIREMENT>
-"""
 
+
+<ENVIRONMENT_BIBLE>
+{environment_bible_str}
+</ENVIRONMENT_BIBLE>
+
+<ENVIRONMENT_TOPOLOGY>
+{topology_str}
+</ENVIRONMENT_TOPOLOGY>
+
+<ACTION_FLOW>
+{action_flow_str}
+</ACTION_FLOW>
+
+<CINEMATIC_SPACE_ALLOCATION>
+{cinematic_space_str}
+</CINEMATIC_SPACE_ALLOCATION>
+
+<CAMERA_LIBRARY>
+{camera_coverages_str}
+</CAMERA_LIBRARY>
+"""
 
 system_prompt_template_decompose_visual_description = \
 """
@@ -286,9 +788,84 @@ Additionally, you will receive a sequence of potential characters, each containi
 - The description is enclosed within <VISUAL_DESC> and </VISUAL_DESC>.
 - The character list is enclosed within <CHARACTERS> and </CHARACTERS>.
 
-
 [Output]
 {format_instructions}
+
+==================================================
+[Shot Duration Estimation Rules]
+
+The shot duration MUST be estimated based on:
+- cinematic pacing
+- motion completion time
+- environmental readability
+- camera movement complexity
+- character movement complexity
+- emotional pacing
+- AI-video stability
+
+DO NOT estimate duration based on text length.
+
+==================================================
+[Duration Guidelines]
+
+5-6 seconds:
+- static shots
+- minimal movement
+- close-up dialogue
+- subtle motion
+
+7-10 seconds:
+- walking shots
+- moderate camera movement
+- dialogue blocking
+- tracking shots
+
+11-13 seconds:
+- environment reveals
+- multiple motion stages
+- large camera movement
+- multi-character movement
+
+14-16 seconds:
+- major cinematic transition shots
+- drone-like traversal
+- complex choreography
+- large spatial transformations
+
+==================================================
+[Variation-Duration Relationship]
+
+small:
+- usually 5-8 seconds
+
+medium:
+- usually 7-11 seconds
+
+large:
+- usually 10-16 seconds
+
+These are guidelines, not strict rules.
+
+==================================================
+[Motion Beat Timing Rules]
+
+Each motion beat requires screen time.
+
+Approximate cinematic pacing:
+- subtle beat: ~1 second
+- moderate beat: ~2 seconds
+- complex beat: ~3-4 seconds
+
+The final duration must allow:
+- all motions to complete naturally
+- camera movement to remain readable
+- character movement to remain clear
+- environmental transitions to remain understandable
+
+==================================================
+[Motion Desc Rules]
+- 如果是跑动动作，不要使用固定镜头，而应该使用平移跟拍，如侧面平移跟拍
+- 如果是大幅度全身姿态重构，减少动作数量，强调缓慢连续动作，或让镜头更远
 
 [Guidelines]
 - Ensure all output values (except keys) match the language used in the script.
@@ -328,6 +905,61 @@ For example, if a character is leaning over a desk and only the upper body is vi
  
 # (输出) 
 # {format_instructions} 
+
+# ==================================================
+# [镜头时长估算规则]
+
+# 拍摄持续时间必须基于：
+# -电影节奏
+# -运动完成时间
+# -环境可读性
+# -摄像机移动复杂度
+# -角色移动复杂性
+# ——情绪节奏
+# - ai视频稳定性
+
+# 不要根据文本长度来估计持续时间。
+
+# ==================================================
+# (持续时间指南)
+
+# 5 - 6秒: 
+# -静态镜头 
+# -最小移动 
+# -特写对话 
+# -微妙的运动 
+ 
+# 7 - 10秒: 
+# -行走镜头 
+# -相机移动适中 
+# -对话阻塞 
+# -跟踪镜头 
+ 
+# 11 - 13秒: 
+# -环境揭示 
+# -多个运动阶段 
+# -大镜头移动 
+# -多字符移动 
+ 
+# 14 - 16秒: 
+# -主要的电影过渡镜头 
+# -像无人机一样的穿越 
+# -复杂的舞蹈编排 
+# -大空间变换 
+ 
+# ================================================== 
+# (Variation-Duration关系) 
+ 
+# 小: 
+# -通常是5-8秒 
+ 
+# 介质: 
+# -通常是7-11秒 
+ 
+# 大: 
+# -通常是10-16秒 
+ 
+# 这些是指导方针，不是严格的规定。
  
 # (指南) 
 # —确保所有输出值（除关键字外）与脚本使用的语言一致。 
@@ -364,14 +996,6 @@ class VisDescDecompositionResponse(BaseModel):
     # 对拍摄的第一帧的详细描述，捕捉最初的视觉元素和构图。
     ff_desc: str = Field(
         description="A detailed description of the first frame of the shot, capturing the initial visual elements and composition.",
-        # examples=[
-        #     "Medium shot of a supermarket aisle at eye level. Bob(a tall man wearing a blue shirt and jeans) is positioned on the right side of the frame, captured in profile and facing right, while Alice(a young woman with short hair, wearing a green dress) is on the left, shown pushing a shopping cart with her gaze lowered toward the ground. They are arranged in a front-to-back spatial relationship. Shelves line both sides of the frame, and cool-toned fluorescent lighting from above washes over the scene. The vibrant colors of product packaging contrast with the metallic gray of the shopping cart, all contained within a stable, horizontally balanced composition.",
-        #     "Extreme long shot. Aerial view from hundreds of meters above the ground. The boundless golden desert resembles undulating frozen waves, occupying the vast majority of the frame. At the very center of the image, a tiny, solitary explorer appears only as a faint dark speck, dragging a long, lonely trail of footprints behind him, stretching all the way to the edge of the frame.",
-        #     "Medium shot at eye level angle. Designer A(with a beard, wearing a white suit) leans forward passionately, speaking emphatically. Product Manager B(with a beard, wearing a white T-shirt) sits with crossed arms, looking skeptical. Between them, Development Engineer C(brown hair, wearing a blue T-shirt) appears anxious, glancing between the two. Project Manager D(curly hair, wearing a red T-shirt) prepares to mediate, focusing on a whiteboard. Bright overhead lighting highlights their expressions, with a blurred whiteboard and glass wall in the background.",
-        #     "A low-angle close-up shot captures the figure from below, framing him from the chest up. His face appears resolute and commanding, his eyes piercing as he speaks passionately. Flecks of saliva are visible, emphasizing his intensity. The overcast sky breaks with occasional light, casting him as a heroic, almost monumental figure against the gloom.",
-        #     "An extremely close-up of an old, motionless pocket watch. Soft light highlights scratches on its brass case and the enamel dial with Roman numerals. The second hand remains fixed at 'VIII', casting a sharp shadow. A wrinkled finger gently touches the glass surface, evoking a tangible sense of stillness and time.",
-        #     "An over-the-shoulder shot at eye level, positioned behind Character A(red hair, wearing a white T-shirt). The foreground, including A's shoulder and head, is softly blurred, directing focus onto Character B(with a beard, wearing a white T-shirt)'s face. B's subtle reactions—shifting from surprise to confusion, then to a glimmer of understanding—are clearly visible. The café background is gently blurred with warm lighting.",
-        # ]
     )
     ff_vis_char_idxs: List[int] = Field(
         description="A list of indices of characters that are visible in the first frame of the shot, corresponding to the character list provided in the input.",
@@ -393,6 +1017,20 @@ class VisDescDecompositionResponse(BaseModel):
             "Dolly in from meidum shot to close-up. Bob (with a beard, wearing a white T-shirt) smiles to the camera.",
         ]
     )
+    motion_beats: List[MotionBeat] = Field(
+        description=(
+            "A sequential breakdown of the major motion beats occurring within the shot. "
+            "Each motion beat represents a visually distinct action, camera movement, "
+            "subject movement, environmental change, or compositional transition that "
+            "contributes to the progression of the shot. "
+            "The beats should be ordered chronologically from the beginning to the end of the shot. "
+            "Each beat should describe only ONE major visual event or movement. "
+            "Use concise professional cinematic language. "
+            "Both camera motion and in-frame motion should be included when relevant. "
+            "These motion beats are used to estimate cinematic pacing, shot complexity, "
+            "AI-video motion stability, and realistic shot duration."
+        )
+    )
     # 表示第一帧和最后一帧之间的变化程度。
     variation_type: Literal["large", "medium", "small"] = Field(
         description="Indicates the degree of change between the first frame and the last frame.",
@@ -407,7 +1045,10 @@ class VisDescDecompositionResponse(BaseModel):
         ],
     )
     shot_duration: int = Field(
-        description="The duration of the shot in seconds. Minimum value is 5 seconds(include), Maximum value is 8 seconds（include）.",
+        description="The duration of the shot in seconds. Minimum value is 5 seconds(include), Maximum value is 15 seconds（include）.",
+    )
+    shot_duration_reasoning: str = Field(
+        description="Explain why this shot requires this duration based on camera movement, character movement, environmental complexity, emotional pacing, and cinematic readability."
     )
 
 
@@ -425,6 +1066,7 @@ class StoryboardArtist:
         self,
         script: str,
         characters: List[CharacterInScene],
+        environment: EnvironmentDesign,
         user_requirement: Optional[str] = None,
         retry_timeout: int = 150,
     ) -> List[ShotBriefDescription]:
@@ -438,10 +1080,86 @@ class StoryboardArtist:
         characters_str = "\n".join([f"Character {index}: {char}" for index, char in enumerate(characters)])
         user_requirement_str = user_requirement.strip() if user_requirement else ""
 
+        # --- 构建环境圣经字符串 ---
+        bible = environment.environment_bible
+        environment_bible_str = (
+            f"Environment Style: {bible.environment_style}\n"
+            f"Atmosphere: {bible.atmosphere}\n"
+            f"Structural Elements\n: {'\n* '.join(bible.structural_elements)}\n"
+            f"Functional Elements\n: {'\n* '.join(bible.functional_elements)}\n"
+            f"Interaction Elements\n: {'\n* '.join(bible.interaction_elements)}\n"
+            f"Set Dressing Elements\n: {'\n* '.join(bible.set_dressing_elements)}\n"
+            f"Lighting Direction: {bible.lighting_direction}\n"
+            f"Terrain Structure: {bible.terrain_structure}\n"
+            f"Spatial Layout: {bible.spatial_layout}\n"
+            f"Functional Requirements\n: {'\n* '.join(bible.functional_requirements)}\n"
+        )
+
+        # --- 构建环境拓扑字符串 ---
+        topo = environment.environment_topology
+        topology_str = (
+            f"Spatial Axes: {topo.spatial_axes}\n"
+            f"Environmental Geography: {topo.environmental_geography}\n"
+            f"Navigation Paths:\n" + "\n".join(f"  - {p}" for p in topo.navigation_paths) + "\n"
+            f"Environmental Landmarks:\n" + "\n".join(f"  - {l}" for l in topo.environmental_landmarks) + "\n"
+            f"Camera Anchors:\n" + "\n".join(f"  - {a}" for a in topo.camera_anchors) + "\n"
+            f"Spatial Continuity Rules:\n" + "\n".join(f"  - {r}" for r in topo.spatial_continuity_rules)
+        )
+
+        # --- 构建动作流字符串 ---
+        action_flow_lines = []
+        for i, af in enumerate(environment.action_flow):
+            action_flow_lines.append(
+                f"ActionFlow {i} — {af.character_description}:\n"
+                f"  Start Position: {af.start_position}\n"
+                f"  Movement Path: {af.movement_path}\n"
+                f"  Interaction Points: " + ", ".join(af.interaction_points) + "\n"
+                f"  Focal Action Zones: " + ", ".join(af.focal_action_zones) + "\n"
+                f"  Emotional Staging Areas: " + ", ".join(af.emotional_staging_areas) + "\n"
+                f"  Cinematic Transition Areas: " + ", ".join(af.cinematic_transition_areas)
+            )
+        action_flow_str = "\n\n".join(action_flow_lines) if action_flow_lines else "(No action flow specified)"
+
+        # --- 构建电影空间分配字符串 ---
+        csa = environment.cinematic_space_allocation
+        cinematic_space_str = (
+            f"Focal Object Zone: {csa.focal_object_zone}\n"
+            f"Character Interaction Zone: {csa.character_interaction_zone}\n"
+            f"Movement Corridor: {csa.movement_corridor}\n"
+            f"Action Staging Zone: {csa.action_staging_zone}\n"
+            f"Camera Operating Space: {csa.camera_operating_space}\n"
+            f"Visual Negative Space: {csa.visual_negative_space}\n"
+            f"Circulation Paths:\n" + "\n".join(f"  - {p}" for p in csa.circulation_paths) + "\n"
+            f"Environmental Storytelling Zones:\n" + "\n".join(f"  - {z}" for z in csa.environmental_storytelling_zones)
+        )
+
+        # --- 构建相机覆盖字符串 ---
+        camera_coverages_lines = []
+        for cam in environment.camera_coverages:
+            camera_coverages_lines.append(
+                f"[{cam.camera_id}] {cam.camera_name}\n"
+                f"  Purpose: {cam.camera_purpose}\n"
+                f"  Lens Type: {cam.lens_type}\n"
+                f"  Composition Type: {cam.composition_style}\n"
+                f"  Visible Area: {cam.visible_environment_area}\n"
+                f"  Camera Movement Compatibility:" + ", ".join(cam.camera_movement_compatibility) + "\n"
+            )
+        camera_coverages_str = "\n\n".join(camera_coverages_lines) if camera_coverages_lines else "(No camera coverages specified)"
+
         parser = PydanticOutputParser(pydantic_object=StoryboardResponse)
         messages = [
             ('system', system_prompt_template_design_storyboard.format(format_instructions=parser.get_format_instructions())),
-            ('human', human_prompt_template_design_storyboard.format(script_str=script_str, characters_str=characters_str, user_requirement_str=user_requirement_str)),
+            ('human', human_prompt_template_design_storyboard.format(
+                script_str=script_str,
+                characters_str=characters_str,
+                user_requirement_str=user_requirement_str,
+                master_prompt_str=environment.master_prompt,
+                environment_bible_str=environment_bible_str,
+                topology_str=topology_str,
+                action_flow_str=action_flow_str,
+                cinematic_space_str=cinematic_space_str,
+                camera_coverages_str=camera_coverages_str,
+            )),
         ]
         chain = self.chat_model | parser
         response: StoryboardResponse = await asyncio.wait_for(
@@ -451,8 +1169,6 @@ class StoryboardArtist:
         storyboard = response.storyboard
 
         return storyboard
-
-
 
 
     @retry(stop=stop_after_attempt(3), after=after_func)
@@ -490,6 +1206,8 @@ class StoryboardArtist:
             idx=shot_brief_desc.idx,
             is_last=shot_brief_desc.is_last,
             cam_idx=shot_brief_desc.cam_idx,
+            camera_id=shot_brief_desc.camera_id,
+            new_camera_reason=shot_brief_desc.new_camera_reason,
             visual_desc=shot_brief_desc.visual_desc,
             variation_type=decomposition.variation_type,
             variation_reason=decomposition.variation_reason,
@@ -498,6 +1216,8 @@ class StoryboardArtist:
             lf_desc=decomposition.lf_desc,
             lf_vis_char_idxs=decomposition.lf_vis_char_idxs,
             motion_desc=decomposition.motion_desc,
+            motion_beats=decomposition.motion_beats,
             audio_desc=shot_brief_desc.audio_desc,
             shot_duration=decomposition.shot_duration,
+            shot_duration_reasoning=decomposition.shot_duration_reasoning,
         )
