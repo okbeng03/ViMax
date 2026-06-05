@@ -71,7 +71,7 @@
   },
   "279": {
     "inputs": {
-      "lora_name": "ltx-2.3-22b-distilled-lora-384.safetensors",
+      "lora_name": "ltx-2.3-22b-distilled-lora-384-1.1.safetensors",
       "strength_model": 0.5,
       "model": [
         "310",
@@ -85,7 +85,7 @@
   },
   "283": {
     "inputs": {
-      "img_compression": 18,
+      "img_compression": 10,
       "image": [
         "316",
         0
@@ -182,7 +182,7 @@
   },
   "294": {
     "inputs": {
-      "value": 24
+      "value": 15
     },
     "class_type": "PrimitiveInt",
     "_meta": {
@@ -279,11 +279,11 @@
   "304": {
     "inputs": {
       "fps": [
-        "292",
+        "342",
         0
       ],
       "images": [
-        "309",
+        "339",
         0
       ],
       "audio": [
@@ -439,7 +439,7 @@
       "method": "lanczos",
       "round_to_multiple": "32",
       "scale_to_side": "longest",
-      "scale_to_length": 1344,
+      "scale_to_length": 1680,
       "background_color": "#000000",
       "image": [
         "269",
@@ -454,7 +454,7 @@
   "318": {
     "inputs": {
       "audio": "shot6_00001_.flac",
-      "audioUI": "/api/view?filename=shot6_00001_.flac&type=input&subfolder=&rand=0.8078360814070585"
+      "audioUI": "/api/view?filename=shot6_00001_.flac&type=input&subfolder=&rand=0.5477315652008524"
     },
     "class_type": "LoadAudio",
     "_meta": {
@@ -597,6 +597,40 @@
     "class_type": "LoraLoaderModelOnly",
     "_meta": {
       "title": "LoRA加载器（仅模型）"
+    }
+  },
+  "339": {
+    "inputs": {
+      "ckpt_name": "rife47.pth",
+      "clear_cache_after_n_frames": 20,
+      "multiplier": 2,
+      "fast_mode": false,
+      "ensemble": true,
+      "scale_factor": 1,
+      "dtype": "float32",
+      "torch_compile": false,
+      "batch_size": 1,
+      "frames": [
+        "309",
+        0
+      ]
+    },
+    "class_type": "RIFE VFI",
+    "_meta": {
+      "title": "RIFE VFI (recommend rife4.25+)"
+    }
+  },
+  "342": {
+    "inputs": {
+      "expression": "a * 2",
+      "values.a": [
+        "292",
+        0
+      ]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {
+      "title": "Math Expression"
     }
   }
 }
