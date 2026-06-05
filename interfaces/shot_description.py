@@ -66,6 +66,15 @@ class ShotBriefDescription(BaseModel):
         description="The index of the camera in the scene.",
         examples=[0, 1, 2],
     )
+
+    camera_id: Optional[str] = Field(
+        description="The camera_id of the camera coverage view. If need introduced new camera, set NULL",
+    )
+
+    new_camera_reason: Optional[str] = Field(
+        description="The reason for need introduced the new camera. If not need, set NULL",
+    )
+
     visual_desc: str = Field(
         description='''A vivid and detailed visual description of the shot that convey rich visual information through text. The character identifiers in the description must match those in the character list and be enclosed in angle brackets (e.g., <Alice>, <Bob>). All visible characters should be described.
         If there is a conversation, please write down the content of the conversation), when you meet some dialogue, you should write into the visual content description with :" " symbols and the character's features (eg. <SLING> (male, late 20s, Texan accent softened by military precision, confident and energetic.) says: "Gear retracted. Flaps transitioning. Flight path stable. You are clear to climb."). 
@@ -141,6 +150,43 @@ class ShotBriefDescription(BaseModel):
         return s
 
 
+class MotionBeat(BaseModel):
+
+    description: str = Field(
+        description="A concise description of a single major motion beat."
+    )
+
+    beat_type: Literal[
+        "camera_motion",
+        "character_motion",
+        "environment_motion",
+        "composition_transition",
+        "emotional_beat",
+    ] = Field(
+        description="The primary category of the motion beat."
+    )
+
+    intensity: Literal[
+        "subtle",
+        "moderate",
+        "strong",
+    ] = Field(
+        description="The visual intensity and pacing weight of the motion beat."
+    )
+
+    estimated_duration: float = Field(
+        description="Estimated screen time in seconds required for this beat to complete naturally."
+    )
+
+    continuity_importance: Literal[
+        "low",
+        "medium",
+        "high",
+    ] = Field(
+        description="How important this beat is for maintaining temporal and visual continuity."
+    )
+
+
 class ShotDescription(BaseModel):
     idx: int = Field(
         description="The index of the shot in the sequence, starting from 0."
@@ -153,6 +199,13 @@ class ShotDescription(BaseModel):
     cam_idx: int = Field(
         description="The index of the camera in the scene.",
         examples=[0, 1, 2],
+    )
+    camera_id: Optional[str] = Field(
+        description="The camera_id of the camera coverage view. If need introduced new camera, set NULL",
+    )
+
+    new_camera_reason: Optional[str] = Field(
+        description="The reason for need introduced the new camera. If not need, set NULL",
     )
     visual_desc: str = Field(
         description='''A vivid and detailed visual description of the shot that convey rich visual information through text. The character identifiers in the description must match those in the character list and be enclosed in angle brackets (e.g., <Alice>, <Bob>).
@@ -206,6 +259,20 @@ class ShotDescription(BaseModel):
         description='''The motion description of the shot.
         If there is a conversation, please write down the content of the conversation), when you meet some dialogue, you should write into the visual content description with :" " symbols and the character's features (eg. SLING (male, late 20s, Texan accent softened by military precision, confident and energetic.) says: "Gear retracted. Flaps transitioning. Flight path stable. You are clear to climb."). If there is a narration, you should write into the visual content description with :" " symbols and the narration's features (eg. Narration: "Everything is looking good. "). ''',
     )
+    motion_beats: List[MotionBeat] = Field(
+        description=(
+            "A sequential breakdown of the major motion beats occurring within the shot. "
+            "Each motion beat represents a visually distinct action, camera movement, "
+            "subject movement, environmental change, or compositional transition that "
+            "contributes to the progression of the shot. "
+            "The beats should be ordered chronologically from the beginning to the end of the shot. "
+            "Each beat should describe only ONE major visual event or movement. "
+            "Use concise professional cinematic language. "
+            "Both camera motion and in-frame motion should be included when relevant. "
+            "These motion beats are used to estimate cinematic pacing, shot complexity, "
+            "AI-video motion stability, and realistic shot duration."
+        )
+    )
 
     # audio
     audio_desc: str = Field(
@@ -227,6 +294,9 @@ class ShotDescription(BaseModel):
     shot_duration: Optional[float] = Field(
         default=5.0,
         description="镜头时长（秒）。",
+    )
+    shot_duration_reasoning: str = Field(
+        description="Explain why this shot requires this duration based on camera movement, character movement, environmental complexity, emotional pacing, and cinematic readability."
     )
     # sound_effect: Optional[str] = Field(
     #     default=None,
