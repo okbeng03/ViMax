@@ -16,10 +16,11 @@ system_prompt_template_select_reference_images_only_text = \
 You are a professional visual creation assistant skilled in multimodal image analysis and reasoning.
 
 [Task]
-Your core task is to intelligently select the most suitable reference images from a provided set of reference image descriptions (including multiple character reference images、Chinese characters reference images and existing scene images from prior frames) based on the user's text description (describing the target frame), ensuring that the subsequently generated image meets the following key consistencies:
+Your core task is to intelligently select the most suitable reference images from a provided set of reference image descriptions (including multiple character reference images、Chinese characters reference images、environmental reference image and existing scene images from prior frames) based on the user's text description (describing the target frame), ensuring that the subsequently generated image meets the following key consistencies:
 - Character Consistency: The appearance (e.g. gender, ethnicity, age, facial features, hairstyle, body shape), clothing, expression, posture, etc., of the generated character should highly match the reference image descriptions.
 - Chinese characters Consistency: The generated Chinese characters should be consistent with the image of the shape of the character in the corresponding period.
 - Environmental Consistency: The scene of the generated image (e.g., background, lighting, atmosphere, layout) should remain coherent with the existing image descriptions from prior frames.
+- preserve spatial continuity
 - Style Consistency: The visual style of the generated image (e.g., realistic, cartoon, film-like, color tone) should harmonize with the reference image descriptions.
 
 [Input]
@@ -44,19 +45,87 @@ Image 7: [Camera 2] Shot from Bob's over-the-shoulder perspective. Bob is on the
 
 
 [Output]
-You need to select up to 8 of the most relevant reference images based on the user's description and put the corresponding indices in the ref_image_indices field of the output.
-
-At the same time, you should generate a final image-generation prompt that preserves the original target frame description enclosed within <FRAME_DESC> and </FRAME_DESC> as the core scene description. The final prompt should be composed of:
-
-* the original target frame description;
-* concise guidance extracted from the selected reference image descriptions.
-
-The generated prompt should explicitly specify which visual elements should reference which image descriptions, including character appearance, clothing, pose, camera angle, composition, environment, lighting, and visual style consistency.
-
-The reference-image guidance should supplement and constrain the target frame description rather than replace or rewrite it.
+You need to select up to 8 of the most relevant reference images based on the user's description and put the corresponding indices in the ref_image_indices field of the output. At the same time, you should generate a text prompt that describes the image to be created, specifying which elements in the generated image should reference which image description (and which elements within it).
 
 {format_instructions}
 
+[Text Prompt RULES]
+The text_prompt MUST begin with a global consistency instruction.
+
+Example:
+
+"Maintain strict consistency with the provided reference images, including character identity, costume design, environment layout, lighting direction, cinematic style, camera continuity, and spatial continuity. Preserve the same cinematic world and visual atmosphere."
+
+After the consistency instruction, describe ONLY the CURRENT FRAME STATE.
+
+The text_prompt should primarily describe:
+
+- shot type
+- framing
+- composition
+- visible character positions
+- character orientation
+- body direction
+- body balance and weight
+- visible posture
+- hand positions
+- visible body regions
+- visible facial expressions
+- eye direction
+- current action moment
+- interaction relationships
+- foreground/background spatial layering
+- cinematic blocking
+- composition relationships
+
+Only minimally reference environment elements name required for:
+- grounding characters spatially
+- supporting interactions
+- anchoring composition
+
+Don't reference the element detail.
+The environment itself must NOT be re-described.
+
+text_prompt 最后以参考图片引用描述结束，引用的 index 基于 ref_image_indices（而不是 SEQ_DESC indices）：
+
+如：
+"小豆丁人物特征、穿着参考 Image 0。\n字博士人物特征、穿着参考 Image 1。\n整体环境、背景参考 Image 2。"
+
+[visual_desc RULES]
+
+The visual_desc must:
+
+- be objective
+- be visually precise
+- obey physical visibility logic
+- obey occlusion logic
+- preserve spatial continuity
+- preserve camera continuity
+
+Focus primarily on:
+
+- visible character states
+- visible poses
+- visible body regions
+- visible facial expressions
+- visible hand states
+- visible interaction states
+- framing
+- composition
+- foreground/background layering
+- depth relationships
+- spatial positioning
+- cinematic blocking
+
+Only describe environment elements
+that are physically visible
+and compositionally relevant.
+
+Do NOT:
+- redesign the environment
+- infer unseen areas
+- describe hidden objects
+- restate full environment layouts
 
 [Guidelines]
 - Ensure that the language of all output values (not include keys) matches that used in the frame description.
@@ -68,20 +137,17 @@ The reference-image guidance should supplement and constrain the target frame de
 - For character portraits, you can only select at most one image from multiple views (front, side, back). Choose the most appropriate one based on the frame description. For example, when depicting a character from the side, choose the side view of the character.
 - Note: The focus of the lens should be on the upper or lower body area. Do not abruptly present a truncated body, which is half of the meaning of the lens. Maintain a three-dimensional proportion. Avoid presenting a body that is cut off at the waist or legs.
 - Select at most **8** optimal reference image descriptions.
-- The generated text prompt that describes the image to be created must preserve the original target frame description enclosed within <FRAME_DESC> and </FRAME_DESC> as the core scene description. The final generation prompt should be composed of:
-    * the original target frame text description;
-    * concise reference-image guidance extracted from the selected reference images, including character appearance, clothing, camera angle, environment, lighting, composition, and style consistency information.
-    The reference-image guidance should supplement and constrain the target frame description rather than replace or rewrite it.
 """
 
 # [Role] 
 # 你是一个专业的视觉创作助理，擅长多模态图像分析和推理。 
  
 # (任务) 
-# 您的核心任务是根据用户的文本描述（描述目标帧），从提供的一组参考图像描述（包括多个字符参考图像和先前帧的现有场景图像）中智能地选择最合适的参考图像，确保随后生成的图像满足以下关键一致性： 
+# 您的核心任务是根据用户的文本描述（描述目标帧），从提供的一组参考图像描述（包括多个字符参考图像、场景环境图像和先前帧的现有场景图像）中智能地选择最合适的参考图像，确保随后生成的图像满足以下关键一致性： 
 # -角色一致性：生成角色的外观（如性别，种族，年龄，面部特征，发型，体型），服装，表情，姿势等应与参考图像描述高度匹配。 
 # -汉字一致性: 生成的汉字要与该汉字对应时期的字形的图像保持一致。
 # -环境一致性：生成图像的场景（例如，背景，照明，氛围，布局）应与先前帧的现有图像描述保持一致。 
+# - 保持镜头连续性
 # -风格一致性：生成图像的视觉风格（例如，逼真的，卡通的，电影般的，色调）应该与参考图像描述协调一致。 
  
 # (输入) 
@@ -107,7 +173,6 @@ The reference-image guidance should supplement and constrain the target frame de
 # 您需要根据用户的描述选择最多8个最相关的参考图像，并将相应的索引放在输出的ref_image_indices字段中。同时，您应该生成一个描述要创建的图像的文本提示符，指定生成的图像中的哪些元素应该引用哪个图像描述（以及其中的哪些元素）。 
  
 # {format_instructions} 
- 
  
 # (指南) 
 # —确保所有输出值（不包括键）的语言与帧描述中使用的语言匹配。 
@@ -156,7 +221,6 @@ Image 4: [Camera 2] Shot from Bob's over-the-shoulder perspective. Bob is on the
 You need to select the most relevant reference images based on the user's description and put the corresponding indices in the `ref_image_indices` field of the output. At the same time, you should generate a text prompt that describes the image to be created, specifying which elements in the generated image should reference which image (and which elements within it).
 
 {format_instructions}
-
 
 [Guidelines]
 - Ensure that the language of all output values (not include keys) matches that used in the frame description.
@@ -227,25 +291,58 @@ human_prompt_template_select_reference_images = \
 <SEQ_IMAGES>
 """
 
-
-
-
 class RefImageIndicesAndTextPrompt(BaseModel):
+    """
+    Reference-image selection result and cinematic frame-state prompts.
+    """
+
     ref_image_indices: List[int] = Field(
-        description="Indices of reference images selected from the provided images. For example, [0, 2, 5] means selecting the first, third, and sixth images. The indices should be 0-based.",
+        description=(
+            "Indices of the selected reference images from the provided sequence. **The index must starts from 0.**"
+        ),
         examples=[
-            [1, 3]
-        ]
-    )
-    text_prompt: str = Field(
-        description="Text description to guide the image generation. You need to describe the image to be generated, specifying which elements in the generated image should reference which image (and which elements within it). For example, 'Create an image following the given description: \nThe man is standing in the landscape. The man should reference Image 0. The landscape should reference Image 1.' Here, the index of the reference image should refer to its position in the ref_image_indices list, not the sequence number in the provided image list. Refer to the reference image must be in the format of Image N. Do not use any other word except Image.",
-        # 指导图像生成的文字描述。您需要描述要生成的图像，指定生成的图像中的哪些元素应该引用哪个图像（以及其中的哪些元素）。例如，“按照给定的描述创建一个图像：\n这个男人站在风景中。这个人应该参考图0。景观应该参考图1。”这里，参考映像的索引应该指向它在ref_image_indices列表中的位置，而不是提供的映像列表中的序列号。参考图片必须是图片n的格式，不要使用除图片以外的任何其他词。
-        examples=[
-            "Create an image based on the following guidance: \n Make modifications based on Image 1: Bob's body turns to face the camera, while all other elements remain unchanged. Bob's appearance should refer to Image 0.",
-            "Create an image following the given description: \nThe man is standing in the landscape. The man should reference Image 0. The landscape should reference Image 1."
+            [0, 2, 5]
         ]
     )
 
+    text_prompt: str = Field(
+        description=(
+            "A cinematic frame-state prompt used for AI image generation.You need to describe the image to be generated, specifying which elements in the generated image should reference which image (and which elements within it).这里，参考映像的索引应该指向它在ref_image_indices列表中的位置，而不是提供的映像列表中的序列号。参考图片必须是图片n的格式，不要使用除图片以外的任何其他词。不存在的人物不要描述参考引用。"
+        ),
+        examples=[
+            (
+                "保持与提供的参考图严格一致，包括角色身份、服装设计、环境布局、光照方向、电影风格、镜头连续性与空间连续性。"
+                "保持同一个电影世界与视觉氛围。\n\n"
+                "中景镜头，三分法则构图。"
+                "小豆丁坐在画面左侧的木制书法桌前。"
+                "他的上半身略微前倾。"
+                "右手握着毛笔停顿在宣纸上方。"
+                "眉头紧锁，视线落在纸上的复杂汉字上。"
+                "桌面散落着练字纸张与墨迹。"
+                "背景中的实验室墙壁与汉字演变挂图轻微虚化。"
+                "左上方窗户投射出暖色体积光。\n"
+                "男孩的外貌特征和穿着参考 Image 0。环境布局、背景整体参考 Image 1。"
+            )
+        ]
+    )
+
+    visual_desc: str = Field(
+        description=(
+            "A complete visual description used for image quality analysis"
+        ),
+        examples=[
+            (
+                "中景镜头，三分法则构图。"
+                "小豆丁位于画面左侧，坐在木制书法桌前。"
+                "画面中仅可见他的上半身。"
+                "他身体略微前倾，右手握着毛笔悬停在宣纸上方。"
+                "眉头紧锁，嘴巴微微撅起，视线集中在桌面的复杂汉字上。"
+                "木桌位于左前区域，桌面摆放着砚台、毛笔与散落的宣纸。"
+                "实验室背景轻微虚化，后方墙壁挂着汉字演变挂图。"
+                "左上方高处窗户投射出暖色体积光，空气中可见轻微灰尘颗粒。"
+            )
+        ]
+    )
 
 
 class ReferenceImageSelector:
@@ -256,13 +353,13 @@ class ReferenceImageSelector:
         config = resolve_chat_model_config(
             {
                 "model_provider": "qwen",
-                "model": "deepseek-v4-pro",
+                "model": "qwen3.6-27b",
             }
         )
         self.chat_model = init_chat_model(**config)
 
     @retry(
-        stop=stop_after_attempt(3),
+        stop=stop_after_attempt(1),
         after=after_func,
     )
     async def select_reference_images_and_generate_prompt(
@@ -278,7 +375,7 @@ class ReferenceImageSelector:
         if len(available_image_path_and_text_pairs) >= 8 or only_text_model:
             human_content = []
             for idx, (_, text) in enumerate(available_image_path_and_text_pairs):
-                human_content.append(f"Image {idx + 1}: {text}")
+                human_content.append(f"Image {idx}: {text}")
             parser = PydanticOutputParser(pydantic_object=RefImageIndicesAndTextPrompt)
 
             messages = [
