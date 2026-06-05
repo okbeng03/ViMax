@@ -1,10 +1,12 @@
 import os
 import logging
-from agents import Screenwriter, CharacterExtractor, CharacterPortraitsGenerator
+import subprocess
+from agents import Screenwriter, CharacterExtractor, CharacterPortraitsGenerator, VoiceDesigner
+from agents.transition_agent import TransitionDirector, TransFragment
 from pipelines.script2video_pipeline import Script2VideoPipeline
 from pipelines.hanzi_pipeline import HanziPipeline
-from interfaces import CharacterInScene
-from typing import List, Dict, Optional
+from interfaces import CharacterInScene, ShotDescription
+from typing import List, Dict, Optional, Tuple
 import asyncio
 import json
 from moviepy import VideoFileClip, concatenate_videoclips
@@ -12,7 +14,8 @@ import yaml
 from langchain.chat_models import init_chat_model
 from tools.render_backend import RenderBackend
 from utils.provider_presets import resolve_chat_model_config
-
+from utils.voice import register_voice, VoiceManager
+from interfaces import *
 
 class Idea2VideoPipeline:
     def __init__(
@@ -47,6 +50,8 @@ class Idea2VideoPipeline:
             chat_model=self.chat_model)
         self.character_portraits_generator = CharacterPortraitsGenerator(
             image_generator=self.image_generator)
+        self.transition_director = TransitionDirector(chat_model=self.chat_model)
+        self.voice_designer = VoiceDesigner(chat_model=self.chat_model)
 
     @classmethod
     def init_from_config(cls, config_path: str):
@@ -107,6 +112,8 @@ class Idea2VideoPipeline:
                     if character.identifier_in_scene in lack_characters:
                         character.idx = new_idx
                         characters.append(character)
+            else:
+                characters = characters_response
             
             with open(save_path, "w", encoding="utf-8") as f:
                 json.dump([character.model_dump()
@@ -115,6 +122,14 @@ class Idea2VideoPipeline:
                 f"✅ Extracted {len(characters)} characters from story and saved to {save_path}.")
         else:
             print(f"🚀 Loaded {len(characters)} characters from existing file.")
+
+        voice_list = VoiceManager.instance().list_all()
+
+        # TODO:: 检查角色是否存在音色，不存在则创建音色
+        # for character in characters:
+        #     if character.identifier_in_scene not in voice_list:
+        #         voice = await self.voice_designer.design_and_register(character, self.audio_generator)
+        #         register_voice(name=voice["character"], gender=voice["gender"])
 
         return characters
 
@@ -241,6 +256,196 @@ class Idea2VideoPipeline:
             }
         }
 
+    async def generate_scene_transitions(self, scene_scripts: List[str], style: str) -> List[Optional[Tuple[str, float]]]:
+        """
+        生成相邻场景间的转场视频，latent continuity transition
+
+        对每对相邻场景 (scene_i, scene_{i+1})：
+        1. 获取前一个场景的最后一个镜头 (尾帧 + 描述)
+        2. 获取后一个场景的第一个镜头 (首帧 + 描述)
+        3. 调用 TransitionDirector 生成桥接转场描述
+        4. 生成转场视频并保存
+        """
+
+        if len(scene_scripts) < 2:
+            return []
+
+        transition_dir = os.path.join(self.working_dir, "transitions")
+        os.makedirs(transition_dir, exist_ok=True)
+
+        # ── 转场描述缓存 ──
+        trans_desc_cache_path = os.path.join(transition_dir, "scene_trans_descriptions.json")
+        transition_fragments = []
+        if os.path.exists(trans_desc_cache_path):
+            with open(trans_desc_cache_path, "r", encoding="utf-8") as f:
+                transition_data = json.load(f)
+            transition_fragments = [TransFragment.model_validate(item) for item in transition_data]
+
+        num_transitions = len(scene_scripts) - 1
+        transition_results: List[Optional[Tuple[str, float]]] = []
+
+        for i in range(num_transitions):
+            prev_scene_dir = os.path.join(self.working_dir, f"scene_{i}")
+            next_scene_dir = os.path.join(self.working_dir, f"scene_{i+1}")
+
+            # ── 转场视频路径 ──
+            transition_video_path = os.path.join(
+                transition_dir, f"transition_scene_{i}_to_{i+1}.mp4"
+            )
+
+            if os.path.exists(transition_video_path):
+                print(f"🚀 Skipped scene transition {i}->{i+1}, video already exists.")
+                clip = VideoFileClip(transition_video_path)
+                transition_results.append((transition_video_path, clip.duration))
+                clip.close()
+                continue
+
+            # ── 1. 获取前一个场景的最后一个镜头 ──
+            prev_last_shot = self._load_last_shot(prev_scene_dir)
+            if prev_last_shot is None:
+                print(f"⚠️ Cannot find last shot in scene {i}, skipping transition {i}->{i+1}.")
+                transition_results.append(None)
+                continue
+
+            prev_last_frame_path = os.path.join(
+                prev_scene_dir, "shots", str(prev_last_shot.idx), "last_frame.png"
+            )
+            prev_last_frame_path = self._ensure_frame(
+                prev_last_frame_path,
+                os.path.join(prev_scene_dir, "shots", str(prev_last_shot.idx), "video.mp4"),
+                label=f"scene {i} last frame",
+            )
+            if prev_last_frame_path is None:
+                transition_results.append(None)
+                continue
+
+            # ── 2. 获取后一个场景的第一个镜头 ──
+            next_first_shot = self._load_shot_by_idx(next_scene_dir, 0)
+            if next_first_shot is None:
+                print(f"⚠️ Cannot find first shot (idx=0) in scene {i+1}, skipping transition {i}->{i+1}.")
+                transition_results.append(None)
+                continue
+
+            next_first_frame_path = os.path.join(
+                next_scene_dir, "shots", "0", "first_frame.png"
+            )
+            if not os.path.exists(next_first_frame_path):
+                print(f"⚠️ No first frame found for scene {i+1} shot 0, skipping transition {i}->{i+1}.")
+                transition_results.append(None)
+                continue
+
+            print(f"🎬 Generating scene transition {i} -> {i+1}...")
+
+            # ── 3. 生成 / 复用转场描述 ──
+            trans_fragment = next(filter(lambda x: x.idx == i, transition_fragments), None)
+
+            if trans_fragment is None:
+                trans_fragment = await self.transition_director.design_transition(
+                    previous_shot=prev_last_shot.visual_desc,
+                    next_shot=next_first_shot.visual_desc,
+                    previous_last_frame=prev_last_shot.lf_desc if prev_last_shot.lf_desc else "",
+                    next_first_frame=next_first_shot.ff_desc if next_first_shot.ff_desc else "",
+                    environment_style=style,
+                )
+                trans_fragment.idx = i
+                transition_fragments.append(trans_fragment)
+
+            # ── 4. 生成转场视频 ──
+            trans_output = await self.video_generator.generate_single_video(
+                prompt=trans_fragment.motion_desc,
+                reference_image_paths=[prev_last_frame_path, next_first_frame_path],
+                duration=trans_fragment.duration,
+            )
+            # self._scale_video(trans_output, transition_video_path)
+
+            # ── 5. 记录结果 ──
+            clip = VideoFileClip(transition_video_path)
+            transition_results.append((transition_video_path, clip.duration))
+            clip.close()
+
+            print(f"☑️ Generated scene transition {i} -> {i+1}, saved to {transition_video_path}.")
+
+        # ── 回写转场描述缓存 ──
+        if len(transition_fragments) > 0:
+            with open(trans_desc_cache_path, "w", encoding="utf-8") as f:
+                json.dump([t.model_dump() for t in transition_fragments], f, ensure_ascii=False, indent=4)
+            print(f"💾 Saved {len(transition_fragments)} scene transition descriptions to {trans_desc_cache_path}.")
+
+        transition_data = []
+
+        for trans in transition_fragments:
+            if trans.enable:
+                transition_data.append(transition_results[trans.idx])
+            else:
+                transition_data.append(None)
+
+        return transition_data
+
+    # ── 辅助方法 ──
+
+    @staticmethod
+    def _load_storyboard(scene_dir: str) -> Optional[List]:
+        """加载场景的 storyboard"""
+        storyboard_path = os.path.join(scene_dir, "storyboard.json")
+        if not os.path.exists(storyboard_path):
+            print(f"⚠️ storyboard.json not found in {scene_dir}")
+            return None
+        with open(storyboard_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+
+    @staticmethod
+    def _load_shot_by_idx(scene_dir: str, shot_idx: int) -> Optional[ShotDescription]:
+        """加载场景中指定索引的镜头描述"""
+        shot_desc_path = os.path.join(scene_dir, "shots", str(shot_idx), "shot_description.json")
+        if not os.path.exists(shot_desc_path):
+            print(f"⚠️ Shot description not found: {shot_desc_path}")
+            return None
+        with open(shot_desc_path, "r", encoding="utf-8") as f:
+            return ShotDescription.model_validate(json.load(f))
+
+    @classmethod
+    def _load_last_shot(cls, scene_dir: str) -> Optional[ShotDescription]:
+        """加载场景的最后一个镜头"""
+        storyboard = cls._load_storyboard(scene_dir)
+        if not storyboard:
+            return None
+        last_idx = len(storyboard) - 1
+        return cls._load_shot_by_idx(scene_dir, last_idx)
+
+    @staticmethod
+    def _ensure_frame(frame_path: str, video_path: str, label: str = "frame") -> Optional[str]:
+        """确保帧文件存在，必要时从视频中提取"""
+        if os.path.exists(frame_path):
+            return frame_path
+        if os.path.exists(video_path):
+            print(f"📸 Extracting {label} from video...")
+            try:
+                subprocess.run([
+                    "ffmpeg", "-y", "-sseof", "-1", "-i", video_path,
+                    "-update", "1", "-q:v", "1", frame_path,
+                ], check=True, capture_output=True)
+                print(f"☑️ Extracted {label}.")
+                return frame_path
+            except subprocess.CalledProcessError as e:
+                print(f"❌ Failed to extract {label}: {e}")
+                return None
+        print(f"⚠️ No video found for {label}, skipping.")
+        return None
+
+    def _scale_video(self, video_output: VideoOutput, video_path: str):
+        """缩放视频"""
+        
+        temp_video_path = video_path.replace(".mp4", "_temp.mp4")
+        video_output.save(temp_video_path)
+        subprocess.run([
+            "ffmpeg", "-y", "-i", temp_video_path,
+            "-vf", "scale=1344:768:force_original_aspect_ratio=decrease,pad=1344:768:(ow-iw)/2:(oh-ih)/2",
+            "-c:v", "libx264", "-preset", "medium", "-crf", "23",
+            video_path,
+        ], check=True, capture_output=True)
+        os.remove(temp_video_path)
+
+
     def check_interrupt(self, step_name: str):
         """检查是否中断"""
         
@@ -252,6 +457,7 @@ class Idea2VideoPipeline:
         user_requirement: str,
         style: str,
     ):
+        hanzi_idea = ""
         # 汉字模式
         if self.mode == "hanzi":
             # 汉字模式
@@ -275,13 +481,13 @@ class Idea2VideoPipeline:
 
             if os.path.exists(hanzi_idea_path):
                 with open(hanzi_idea_path, "r", encoding="utf-8") as f:
-                    idea = f.read()
+                    hanzi_idea = f.read()
 
         if self.check_interrupt("hanzi"):
             return
         
         # 生成故事
-        story = await self.develop_story(idea=idea, user_requirement=user_requirement)
+        story = await self.develop_story(idea=idea + "\n" + hanzi_idea, user_requirement=user_requirement)
         
         if self.check_interrupt("story"):
             return
@@ -298,6 +504,7 @@ class Idea2VideoPipeline:
             character_portraits_registry=None,
             style=style,
         )
+        # character_portraits_registry = {}
         
         if self.check_interrupt("portrait"):
             return
@@ -335,6 +542,9 @@ class Idea2VideoPipeline:
         else:
             # 生成场景视频，拆解成镜头再合成
             for idx, scene_script in enumerate(scene_scripts):
+                # if idx > 2:
+                #     continue
+
                 scene_working_dir = os.path.join(self.working_dir, f"scene_{idx}")
                 os.makedirs(scene_working_dir, exist_ok=True)
                 print(f"🎬 Starting scene {idx} video generation...")
@@ -358,15 +568,26 @@ class Idea2VideoPipeline:
 
             if self.interrupt_step is not None:
                 return
-            
+
+            # latent continuity transition
+            scene_transitions = await self.generate_scene_transitions(
+                scene_scripts=scene_scripts,
+                style=style,
+            )
+
             # 合并所有场景视频
             final_video_path = os.path.join(self.working_dir, "final_video.mp4")
             if os.path.exists(final_video_path):
                 print(f"🚀 Skipped concatenating videos, already exists.")
             else:
                 print(f"🎬 Starting concatenating videos...")
-                video_clips = [VideoFileClip(final_video_path, audio=True)
-                            for final_video_path in all_video_paths]
+                video_clips = []
+                for idx, scene_video_path in enumerate(all_video_paths):
+                    video_clips.append(VideoFileClip(scene_video_path, audio=True))
+
+                    if idx < len(scene_transitions) and scene_transitions[idx] is not None:
+                        trans_path, _ = scene_transitions[idx]
+                        video_clips.append(VideoFileClip(trans_path, audio=False))
                 
                 if self.mode == "hanzi" and hanzi_video_path:
                     video_clips.append(VideoFileClip(hanzi_video_path, audio=True))
