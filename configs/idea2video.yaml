@@ -1,6 +1,6 @@
 chat_model:
   init_args:
-    model: qwen3.6-plus
+    model: kimi-k2.6
     model_provider: qwen
     # model: doubao-1-5-pro-32k-250115
     # model_provider: openai
@@ -57,7 +57,7 @@ audio_generator:
   max_requests_per_minute: null
   max_requests_per_day: null
 
-working_dir: /Users/wangchangbin/ai/vimax_ri
+working_dir: /Users/wangchangbin/ai/cangjie
 
 # 中断步骤
 ## 汉字步骤
@@ -72,10 +72,15 @@ working_dir: /Users/wangchangbin/ai/vimax_ri
 # character 提取角色特征
 # portrait 生成角色肖像
 # script 生成剧本
+# environment 生成环境描述
+# environment_images 生成环境图片
 # storyboard 生成故事板
 # shot_description 生成镜头描述
 # camera_tree 生成相机树
 # camera_frame 生成相机帧
+# shot_video
+# shot_transition
+# scene_video
 interrupt_step: null
 
 # 模式
@@ -89,9 +94,12 @@ gacha_config:
   # first_frame 首帧图片
   # last_frame 尾帧图片
   # video 视频
-  type: first_frame
-  scene: 2
-  shot: 5
+  type: video
+  scene: 1
+  shot: 2
 
-hanzi: 日
-relate_hanzi: 春,明,时,早,明,昨,暑
+hanzi: 人
+# relate_hanzi: 春,明,时,早,明,昨,暑
+# relate_hanzi: 龟,日,月,山,水
+
+# new_character: 仓颉
