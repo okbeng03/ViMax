@@ -18,6 +18,7 @@ import logging
 import asyncio
 from typing import List, Optional
 from pydantic import BaseModel, Field
+from interfaces import CharacterInScene
 from langchain.chat_models import init_chat_model
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.output_parsers import PydanticOutputParser
@@ -30,10 +31,16 @@ logger = logging.getLogger(__name__)
 system_prompt_template_convert_dialogue = \
 """
 [Role]
-你是一个专业的提示转换器，专门用于将基于对话的视频脚本转换为针对LTX video 2.3模型优化的电影场景描述。
+
+你是一个专业的提示转换器，专门用于将基于对话的视频脚本转换为针对 LTX Video 2.3 模型优化的电影场景描述。
+
+---
 
 [Task]
-你的任务是将音频描述（包含音效、对话等信息）融合到场景视觉描述中。
+
+你的任务是将音频描述（包含音效、对话、语气等信息）和角色设定信息融合到镜头视觉描述中，生成适合视频生成模型理解的完整场景描述。
+
+你需要：
 
 1. **理解场景描述和音频描述**: 阅读并理解场景描述和音频描述，思考对应的音效、对话在视频场景的哪个时间段引入最合理。
 2. **Dialogue to Scene Description**: Convert dialogue format (e.g., "Alice: Hello" or "Alice (Happy): Hello") into narrative scene descriptions.
@@ -43,15 +50,26 @@ system_prompt_template_convert_dialogue = \
 3. **Remove Colons in Dialogue**: LTX 2.3 does not support the colon format. Replace "Name: dialogue" with descriptive action sentences.
   - Wrong: "Alice: Hello Bob"
   - Correct: "Alice waves to Bob, 'Hello Bob'"
+4. 理解角色设定信息。
+5. 将角色设定补充到镜头中的角色描述里。如果镜头里多次出现角色，只将设定补充在第一个位置。
+6. 保持场景逻辑、时间顺序和动作连续性。
+7. 输出最终优化后的场景描述。
+
+---
 
 [Input]
 你将收到：
 - Audio description: A detailed description of the audio in the shot. The audio input is enclosed within <Audio> and </Audio>.
 - Motion description: The motion description of the shot. Describe the dynamic visual changes within the shot (camera movement and the movement of elements within the frame). The motion input is enclosed within <Motion> and </Motion>
 - duration: The duration of the shot in seconds(include). The duration input is enclosed within <Duration> and </Duration>
+- characters: A list describing basic information for each character, such as name, personality traits, appearance (if relevant). The characters input is enclosed within <Characters> and </Characters>
 
-[Output Format]
+---
+
+[Output Format] 
 {format_instructions}
+
+---
 
 [Guidelines]
 - 要保持场景视觉描述的意思不发生改变
@@ -64,7 +82,51 @@ system_prompt_template_convert_dialogue = \
 - **计算对话时长**：按对话语速 4.5 字/秒 （含自然停顿）来计算
 - 如果有多个对话，对话之间需有停顿，建议间隔0.5秒
 
-请严格遵循以上规则，直接输出 JSON，不要添加解释。
+---
+
+[Character Profile Injection Rules]
+
+当镜头中出现角色时，必须根据 Characters 补充角色外观描述。
+
+格式：
+
+角色(
+静态外观特征
+动态外观特征
+)
+
+Rules:
+
+- 保留 Motion Description 原有动作
+- 从 Character 提取静态特征
+- 不要改变原场景含义
+- 不要增加剧本中不存在的新动作
+- 不要增加新情绪
+- 不要增加新道具
+- 不要增加新场景元素
+
+Character 仅用于补充角色外观一致性
+
+示例：
+
+原文：
+
+一位身着红色盘扣小马甲与黄色灯笼裤的小男孩仰头凝望。
+
+改写：
+
+一位小男孩(
+5岁，
+两个冲天揪发型，
+圆润脸颊，
+大而明亮的眼睛，
+红色盘扣小马甲，
+黄色灯笼裤，
+黑色布鞋
+)仰头凝望。
+
+
+请严格遵循以上规则，直接输出 JSON，不要添加任何解释。
 """
 
 human_prompt_template_convert_dialogue = \
@@ -80,6 +142,10 @@ human_prompt_template_convert_dialogue = \
 <Duration>
 {duration}
 </Duration>
+
+<Characters>
+{characters_str}
+</Characters>
 """
 
 class Dialogue(BaseModel):
@@ -95,6 +161,7 @@ class ShotDescriptionWithDialogues(BaseModel):
     dialogues: Optional[List[Dialogue]] = Field(default=[], description="对话列表")
     shot_duration: Optional[float] = Field(..., description="镜头时长（秒）")
     use_xianxia_lora: Optional[bool] = Field(default=False, description="是否使用仙侠lora。如果有对话，请设置为True")
+    is_small_people: Optional[bool] = Field(default=False)
 
 class PromptConverter:
     """
@@ -116,7 +183,7 @@ class PromptConverter:
         config = resolve_chat_model_config(
             {
                 "model_provider": "qwen",
-                "model": "deepseek-v4-pro",
+                "model": "qwen3.6-27b",
             }
         )
         self.chat_model = init_chat_model(**config)
@@ -125,6 +192,7 @@ class PromptConverter:
         self,
         audio_desc: str,
         motion_desc: str = "",
+        characters: List[CharacterInScene] = [],
         shot_duration: float = 5.0,
         retry_timeout: int = 300,
     ) -> ShotDescriptionWithDialogues:
@@ -142,6 +210,8 @@ class PromptConverter:
         """
         
         parser = PydanticOutputParser(pydantic_object=ShotDescriptionWithDialogues)
+        characters_str = "\n".join([f"{character.identifier_in_scene}: {character.static_features}{character.dynamic_features}" for character in characters])
+
         messages = [
             SystemMessage(content=system_prompt_template_convert_dialogue.format(
                 format_instructions=parser.get_format_instructions(),
@@ -150,6 +220,7 @@ class PromptConverter:
                 audio_desc=audio_desc or "(No audio)",
                 motion_desc=motion_desc or "(No motion description)",
                 duration=shot_duration,
+                characters_str=characters_str
             )),
         ]
         
