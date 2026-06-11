@@ -217,12 +217,12 @@
   "617": {
     "inputs": {
       "width": [
-        "685",
-        1
+        "732",
+        3
       ],
       "height": [
-        "685",
-        2
+        "732",
+        4
       ],
       "length": [
         "644",
@@ -558,37 +558,13 @@
     "inputs": {
       "img_compression": 10,
       "image": [
-        "685",
+        "732",
         0
       ]
     },
     "class_type": "LTXVPreprocess",
     "_meta": {
       "title": "LTXV预处理"
-    }
-  },
-  "685": {
-    "inputs": {
-      "width": [
-        "700",
-        3
-      ],
-      "height": [
-        "700",
-        3
-      ],
-      "upscale_method": "nearest-exact",
-      "keep_proportion": true,
-      "divisible_by": 32,
-      "crop": "disabled",
-      "image": [
-        "686",
-        0
-      ]
-    },
-    "class_type": "ImageResizeKJ",
-    "_meta": {
-      "title": "Resize Image (deprecated)"
     }
   },
   "686": {
@@ -615,7 +591,7 @@
   },
   "697": {
     "inputs": {
-      "text": "768",
+      "text": "960",
       "anything": [
         "700",
         4
@@ -628,7 +604,7 @@
   },
   "698": {
     "inputs": {
-      "text": "1680",
+      "text": "1696",
       "anything": [
         "700",
         3
@@ -672,7 +648,7 @@
   "712": {
     "inputs": {
       "audio": "final_dialogues.flac",
-      "audioUI": "/api/view?filename=final_dialogues.flac&type=input&subfolder=&rand=0.98392196392045"
+      "audioUI": "/api/view?filename=final_dialogues.flac&type=input&subfolder=&rand=0.6841371603942238"
     },
     "class_type": "LoadAudio",
     "_meta": {
@@ -796,6 +772,27 @@
     "class_type": "ComfyMathExpression",
     "_meta": {
       "title": "Math Expression"
+    }
+  },
+  "732": {
+    "inputs": {
+      "aspect_ratio": "16:9",
+      "proportional_width": 1,
+      "proportional_height": 1,
+      "fit": "crop",
+      "method": "lanczos",
+      "round_to_multiple": "32",
+      "scale_to_side": "longest",
+      "scale_to_length": 1680,
+      "background_color": "#000000",
+      "image": [
+        "686",
+        0
+      ]
+    },
+    "class_type": "LayerUtility: ImageScaleByAspectRatio V2",
+    "_meta": {
+      "title": "图层工具：按宽高比缩放 V2"
     }
   }
 }
