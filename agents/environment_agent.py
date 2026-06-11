@@ -722,20 +722,44 @@ Avoid:
 ==================================================
 [QWEN_EDIT_CAMERA_PROMPT RULES]
 
-The qwen_edit_camera_prompt MUST:
+1. 只允许描述：
+   - Camera Position
+   - Camera Height
+   - Camera Orientation
+   - Lens Type
+   - Fixed Environment Landmarks
 
-* describe ONLY camera transformation
-* NEVER redesign the environment
-* NEVER add new objects
-* NEVER remove objects
-* NEVER modify layout
-* NEVER modify lighting
-* NEVER modify weather
-* NEVER change time of day
-* Never mention people and animals
-* 不能出现动物、人物、人物身体。如果是特写镜头，不用描述对着哪个人哪个部位特写，应该描述机位、视角，比如：脸部特写，“将相机稍微抬高，俯拍”
-* 可以基于区域、固定物体来确定机位，绝不能基于人物
-* 不要描述人物动作后出现的东西（如字、图）
+2. 禁止描述：
+   - Character
+   - Body Parts
+   - Actions
+   - Expressions
+   - Dialogue
+   - Props held by characters
+
+3. 禁止出现：
+   人物
+   角色
+   主角
+   群众
+   肩膀
+   手
+   脸
+   眼睛
+   身体
+   动作
+   表情
+
+4. 禁止出现：
+   字
+   图案
+   特效
+   虚影
+   能量
+   火焰
+   光束
+
+5. Camera Prompt 应当在没有任何角色存在时依然成立。
 
 ONLY modify:
 
