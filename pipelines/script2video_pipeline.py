@@ -36,6 +36,7 @@ class Script2VideoPipeline:
         working_dir: str,
         interrupt_step: str = None,
         gacha_config: dict = None,
+        comfyui_enable: bool = True,
     ):
 
         self.chat_model = chat_model
@@ -60,6 +61,7 @@ class Script2VideoPipeline:
         os.makedirs(self.working_dir, exist_ok=True)
         self.interrupt_step = interrupt_step
         self.gacha_config = gacha_config
+        self.comfyui_enable = comfyui_enable
 
 
     @classmethod
@@ -139,10 +141,11 @@ class Script2VideoPipeline:
             environment_design=environment_design,
             style=style,
         )
-
+        # environments = {}
+        
         if self.check_interrupt("environment_images"):
             return
-        # environments = {}
+        
 
         # design shots
         # 场景分镜
@@ -263,14 +266,15 @@ class Script2VideoPipeline:
                 return
 
             # 基于首尾帧生成镜头视频
-            video_tasks = [
-                self.generate_video_for_single_shot(
-                    shot_description=shot_description,
-                    characters=characters,
-                )
-                for shot_description in shot_descriptions
-            ]
-            await asyncio.gather(*video_tasks)
+            if self.comfyui_enable:
+                video_tasks = [
+                    self.generate_video_for_single_shot(
+                        shot_description=shot_description,
+                        characters=characters,
+                    )
+                    for shot_description in shot_descriptions
+                ]
+                await asyncio.gather(*video_tasks)
 
             if self.check_interrupt("shot_video"):
                 return
@@ -317,6 +321,9 @@ class Script2VideoPipeline:
                     shot_transitions=shot_transitions,
                 )
                 
+                if not narration_audio_path:
+                    return
+                
                 # 合并视频和旁白
                 print(f"🎬 Starting merging video and narration...")
                 
@@ -330,7 +337,7 @@ class Script2VideoPipeline:
                     "-of", "csv=p=0", story_video_path
                 ]
                 has_audio = subprocess.run(check_audio_cmd, capture_output=True, text=True).stdout.strip()
-                
+
                 if has_audio:
                     # 视频有音频，混合对话和旁白
                     # 保持旁白和对话音量一致
@@ -650,6 +657,9 @@ class Script2VideoPipeline:
             else:
                 # 根据 new_camera_reason 生成新的环境图
                 if shot.new_camera_reason:
+                    if not self.comfyui_enable:
+                        return
+
                     new_camera = await self.environment_designer.design_new_camera(
                         environment=environment,
                         shot_description=shot.visual_desc,
@@ -705,6 +715,9 @@ class Script2VideoPipeline:
             print(f"☑️ Selected reference images and generated prompt for {frame_type} frame of shot {shot_idx}, saved to {selector_output_path}.")
         
         if not selector_output:
+            return
+
+        if not self.comfyui_enable:
             return
             
         reference_image_path_and_text_pairs, prompt = selector_output["reference_image_path_and_text_pairs"], selector_output["text_prompt"]
@@ -916,6 +929,9 @@ class Script2VideoPipeline:
         if os.path.exists(master_image_path):
             print(f"🚀 Loaded existing master environment image.")
         else:
+            if not self.comfyui_enable:
+                return {}
+
             master_prompt = f"style: {style}\n{environment_design.master_prompt}" if style else environment_design.master_prompt
             print(f"🎬 Generating master environment image...")
             master_image: ImageOutput = await self.image_generator.generate_single_image(
@@ -929,11 +945,13 @@ class Script2VideoPipeline:
         camera_image_map: Dict[str, str] = {}
         for cam_coverage in environment_design.camera_coverages:
             cam_image_path = await self.generate_environment_image(cam_coverage, style)
-            camera_image_map[cam_coverage.camera_id] = {
-                "path": cam_image_path,
-                "description": f"{cam_coverage.lens_type}，{cam_coverage.composition_style}，{cam_coverage.visible_environment_area}",
-            }
-            print(f"✅ Camera image for {cam_coverage.camera_id} saved to {cam_image_path}.")
+
+            if cam_image_path:
+                camera_image_map[cam_coverage.camera_id] = {
+                    "path": cam_image_path,
+                    "description": f"{cam_coverage.lens_type}，{cam_coverage.composition_style}，{cam_coverage.visible_environment_area}",
+                }
+                print(f"✅ Camera image for {cam_coverage.camera_id} saved to {cam_image_path}.")
 
         # 3. 保存映射
         camera_image_map_path = os.path.join(self.working_dir, "camera_image_map.json")
@@ -960,6 +978,9 @@ class Script2VideoPipeline:
         if os.path.exists(cam_image_path):
             print(f"🚀 Loaded existing camera image for {camera_coverage.camera_id}.")
         else:
+            if not self.comfyui_enable:
+                return ""
+
             # edit_prompt = f"style: {style}\n{camera_coverage.qwen_edit_camera_prompt}" if style else camera_coverage.qwen_edit_camera_prompt
             print(f"📷 Generating camera image for {camera_coverage.camera_id} ({camera_coverage.camera_name})...")
             cam_image: ImageOutput = await self.image_generator.generate_single_image(
@@ -1190,10 +1211,14 @@ class Script2VideoPipeline:
         await self.narration_agent.generate_audio(
             narration=narration_desc,
             output_path=narration_audio_path,
+            comfyui_enable=self.comfyui_enable,
         )
-        print(f"✅ Generated narration audio saved to {narration_audio_path}.")
+
+        if os.path.exists(narration_audio_path):
+            print(f"✅ Generated narration audio saved to {narration_audio_path}.")
+            return narration_audio_path
         
-        return narration_audio_path
+        return
 
     async def generate_shot_transitions(self, shot_descriptions: List[ShotDescription], style: str) -> List[Optional[Tuple[str, float]]]:
         """生成shot之间的转场视频。latent continuity transition"""
@@ -1255,6 +1280,10 @@ class Script2VideoPipeline:
                 clip = VideoFileClip(transition_video_path)
                 transition_results.append((transition_video_path, clip.duration))
                 clip.close()
+                continue
+
+            if not self.comfyui_enable:
+                transition_results.append(None)
                 continue
 
             print(f"🎬 Generating latent continuity transition {prev_shot.idx} -> {next_shot.idx}...")

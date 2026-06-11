@@ -9,6 +9,7 @@ from interfaces import CharacterInScene, ShotDescription
 from typing import List, Dict, Optional, Tuple
 import asyncio
 import json
+import aiohttp
 from moviepy import VideoFileClip, concatenate_videoclips
 import yaml
 from langchain.chat_models import init_chat_model
@@ -25,6 +26,7 @@ class Idea2VideoPipeline:
         video_generator: str,
         audio_generator: str,
         working_dir: str,
+        comfyui_base_url: str,
         interrupt_step: str = None,
         mode: str = "normal",
         hanzi: str = None,
@@ -43,6 +45,7 @@ class Idea2VideoPipeline:
         self.new_character = new_character
         self.relate_hanzi = relate_hanzi
         self.gacha_config = gacha_config
+        self.comfyui_enable = False
         os.makedirs(self.working_dir, exist_ok=True)
 
         self.screenwriter = Screenwriter(chat_model=self.chat_model)
@@ -52,6 +55,9 @@ class Idea2VideoPipeline:
             image_generator=self.image_generator)
         self.transition_director = TransitionDirector(chat_model=self.chat_model)
         self.voice_designer = VoiceDesigner(chat_model=self.chat_model)
+
+        os.makedirs(os.path.join(self.working_dir, "workflows"), exist_ok=True)
+        os.makedirs(os.path.join(self.working_dir, "transitions"), exist_ok=True)
 
     @classmethod
     def init_from_config(cls, config_path: str):
@@ -68,6 +74,7 @@ class Idea2VideoPipeline:
             video_generator=backend.video_generator,
             audio_generator=backend.audio_generator,
             working_dir=config["working_dir"],
+            comfyui_base_url=config["comfyui_base_url"],
             interrupt_step=config["interrupt_step"],
             mode=config["mode"],
             hanzi=config["hanzi"],
@@ -75,6 +82,14 @@ class Idea2VideoPipeline:
             relate_hanzi=config.get("relate_hanzi", "").split(",") if config.get("relate_hanzi") else None,
             gacha_config=config["gacha_config"],
         )
+
+    async def _check_comfyui_health(self):
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(f"{self.base_url}/", timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                    return resp.status == 200
+        except Exception:
+            return False
 
     async def extract_characters(
         self,
@@ -147,6 +162,9 @@ class Idea2VideoPipeline:
                     character_portraits_registry = json.load(f)
             else:
                 character_portraits_registry = {}
+
+        if not self.comfyui_enable:
+            return character_portraits_registry
 
         # 为每个角色生成肖像图片
         tasks = [
@@ -300,6 +318,10 @@ class Idea2VideoPipeline:
                 clip.close()
                 continue
 
+            if self.comfyui_enable:
+                transition_results.append(None)
+                continue
+
             # ── 1. 获取前一个场景的最后一个镜头 ──
             prev_last_shot = self._load_last_shot(prev_scene_dir)
             if prev_last_shot is None:
@@ -356,6 +378,7 @@ class Idea2VideoPipeline:
                 reference_image_paths=[prev_last_frame_path, next_first_frame_path],
                 duration=trans_fragment.duration,
             )
+            trans_output.save(transition_video_path)
             # self._scale_video(trans_output, transition_video_path)
 
             # ── 5. 记录结果 ──
@@ -457,6 +480,9 @@ class Idea2VideoPipeline:
         user_requirement: str,
         style: str,
     ):
+        # 检查 comfyui 的状态
+        self.comfyui_enable = await self._check_comfyui_health()
+
         hanzi_idea = ""
         # 汉字模式
         if self.mode == "hanzi":
@@ -471,6 +497,7 @@ class Idea2VideoPipeline:
                 hanzi=self.hanzi,
                 relate_hanzi=self.relate_hanzi,
                 interrupt_step=self.interrupt_step,
+                comfyui_enable=self.comfyui_enable,
             )
             hanzi_video_path = await hanzi_pipeline()
             
@@ -542,7 +569,7 @@ class Idea2VideoPipeline:
         else:
             # 生成场景视频，拆解成镜头再合成
             for idx, scene_script in enumerate(scene_scripts):
-                # if idx > 2:
+                # if idx != 5:
                 #     continue
 
                 scene_working_dir = os.path.join(self.working_dir, f"scene_{idx}")
@@ -555,6 +582,7 @@ class Idea2VideoPipeline:
                     audio_generator=self.audio_generator,
                     working_dir=scene_working_dir,
                     interrupt_step=self.interrupt_step,
+                    comfyui_enable=self.comfyui_enable,
                 )
                 final_video_path = await script2video_pipeline(
                     script=scene_script,
@@ -574,6 +602,9 @@ class Idea2VideoPipeline:
                 scene_scripts=scene_scripts,
                 style=style,
             )
+            
+            if self.check_interrupt("scene_transition"):
+                return
 
             # 合并所有场景视频
             final_video_path = os.path.join(self.working_dir, "final_video.mp4")

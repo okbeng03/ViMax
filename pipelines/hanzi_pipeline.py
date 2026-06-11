@@ -64,6 +64,7 @@ class HanziPipeline:
         hanzi: str,
         relate_hanzi: List[str] | None = None,
         interrupt_step: str | None = None,
+        comfyui_enable: bool = True,
     ):
         self.chat_model: BaseChatModel = chat_model
         self.image_generator: Any = image_generator
@@ -73,6 +74,7 @@ class HanziPipeline:
         self.hanzi: str = hanzi
         self.relate_hanzi: List[str] | None = relate_hanzi
         self.interrupt_step: str | None = interrupt_step
+        self.comfyui_enable: bool = comfyui_enable
         
         os.makedirs(self.working_dir, exist_ok=True)
         self.temp_dir = os.path.join(self.working_dir, "temp")
@@ -537,7 +539,7 @@ class HanziPipeline:
         transitions = []
         
          # 定义字形演变顺序
-        glyph_order = ['甲骨文', '金文', '楚系简帛', '楷书']
+        glyph_order = ['甲骨文', '金文', '楚系简帛', '隶书', '楷书']
         
         # 获取按顺序排列的字形路径
         ordered_glyphs = []
@@ -1682,18 +1684,21 @@ class HanziPipeline:
         if self.check_interrupt("transition"):
             return ""
         
-        video_paths = await self.generate_evolution_videos(glyph_png_paths, transitions)
-        
-        # 生成旁白
-        narration_audio_path = await self.generate_narration_audio(glyph_png_paths)
-        
-        # Step 7: 合并视频
-        merged_video_path = await self.merge_evolution_videos(video_paths)
+        if self.comfyui_enable:
+            video_paths = await self.generate_evolution_videos(glyph_png_paths, transitions)
+            
+            # 生成旁白
+            narration_audio_path = await self.generate_narration_audio(glyph_png_paths)
+            
+            # Step 7: 合并视频
+            merged_video_path = await self.merge_evolution_videos(video_paths)
 
-        # Step 10: 将旁白音频添加到视频
-        self.add_audio_to_video(merged_video_path, narration_audio_path, glyph_png_paths, final_video_path)
-        
-        return final_video_path
+            # Step 10: 将旁白音频添加到视频
+            self.add_audio_to_video(merged_video_path, narration_audio_path, glyph_png_paths, final_video_path)
+            
+            return final_video_path
+
+        return ""
     
     async def merge_videos(self, video_paths: list[str]) -> str:
         """
@@ -1838,7 +1843,7 @@ class HanziPipeline:
         
         # Step 7: 合并视频
         final_video_path = await self.merge_videos([py_video_path, stroke_video_path, transition_video_path])
-        
+
         if self.check_interrupt("video"):
             return ""
 
