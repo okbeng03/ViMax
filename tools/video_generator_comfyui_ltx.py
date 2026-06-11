@@ -201,6 +201,7 @@ class VideoGeneratorComfyUILTX:
         workflow["672"]["inputs"]["text"] = prompt
         workflow["673"]["inputs"]["value"] = duration
         workflow["700"]["inputs"]["aspect_ratio"] = aspect_ratio
+        workflow["732"]["inputs"]["aspect_ratio"] = aspect_ratio
         
         if not use_xianxia_lora:
             workflow["605"]["inputs"]["model"] = ["610", 0]
@@ -214,6 +215,7 @@ class VideoGeneratorComfyUILTX:
 
         if is_small_people:
             workflow["700"]["inputs"]["scale_to_length"] = 2560
+            workflow["732"]["inputs"]["scale_to_length"] = 2560
         
         # 图片处理
         first_frame = {
@@ -257,10 +259,10 @@ class VideoGeneratorComfyUILTX:
                 workflow.pop(node_id, None)
 
         # 调整尾帧的 scale
-        last_frame_scale = last_frame["scale"]
-        prev_frame_scale_node_id = all_frames[-2]["scale"]
-        workflow[last_frame_scale]["inputs"]["width"] = [prev_frame_scale_node_id, 3]
-        workflow[last_frame_scale]["inputs"]["height"] = [prev_frame_scale_node_id, 3]
+        # last_frame_scale = last_frame["scale"]
+        # prev_frame_scale_node_id = all_frames[-2]["scale"]
+        # workflow[last_frame_scale]["inputs"]["width"] = [prev_frame_scale_node_id, 3]
+        # workflow[last_frame_scale]["inputs"]["height"] = [prev_frame_scale_node_id, 3]
         last_frame_addguide = last_frame["addguide"]
         prev_frame_addguide_node_id = all_frames[-2]["addguide"]
         workflow[last_frame_addguide]["inputs"]["positive"] = [prev_frame_addguide_node_id, 0]
@@ -284,6 +286,8 @@ class VideoGeneratorComfyUILTX:
         duration_node["widgets_values"][0] = duration
         scale_node = next((node for node in nodes if node["id"] == 700), None)
         scale_node["widgets_values"][0] = aspect_ratio
+        last_scale_node = next((node for node in nodes if node["id"] == 732), None)
+        last_scale_node["widgets_values"][0] = aspect_ratio
         first_image_node = next((node for node in nodes if node["id"] == 699), None)
         first_image_node["widgets_values"][0] = workflow["699"]["inputs"]["image"]
         last_image_node = next((node for node in nodes if node["id"] == 686), None)
@@ -301,6 +305,8 @@ class VideoGeneratorComfyUILTX:
         if is_small_people:
             scale_node = next((node for node in nodes if node["id"] == 700), None)
             scale_node["widgets_values"][7] = 2560
+            last_scale_node = next((node for node in nodes if node["id"] == 732), None)
+            last_scale_node["widgets_values"][7] = 2560
 
         return workflow, ui_workflow
     
