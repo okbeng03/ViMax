@@ -3,6 +3,7 @@ import requests
 import base64
 import mimetypes
 import os
+import uuid
 from tenacity import retry
 from pathlib import Path
 from io import BytesIO
@@ -107,7 +108,7 @@ def upload_file_to_oss(policy_data, file_path):
     """将文件上传到临时存储OSS"""
 
     file_name = Path(file_path).name
-    key = f"{policy_data['upload_dir']}/{file_name}"
+    key = f"{policy_data['upload_dir']}/{file_name}_{uuid.uuid4()}"
     
     with open(file_path, 'rb') as file:
         files = {
