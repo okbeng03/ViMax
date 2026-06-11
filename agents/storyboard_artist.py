@@ -213,7 +213,8 @@ Character traversal through the environment must feel believable.
     * undefined entry/exit
 
 - Character entry and exit must be explicitly described.
-- 镜头中出现的但不在 CHARACTERS 里的角色，如果其在镜头中出现的次数超过 1 次，则必须在镜头里详细描述其静态&动态特征，并且要保持镜头间他的静态&动态特征的一致性。
+- **场景中出现的在 CHARACTERS 里的角色。只需描述其姿态、动作、表情、情绪等特征，不需要描述其静态特征（从图片参考即可）**
+- **场景中出现的但不在 CHARACTERS 里的角色，如果其在场景中出现的次数超过 1 次，则必须详细描述其静态&动态特征，并且要保持场景镜头间他的静态&动态特征的一致性。**
     * The static features of the character in this specific scene, such as facial features and body shape that remain constant or are rarely changed
     * The dynamic features of the character in this specific scene, such as clothing and accessories that may change from scene to scene.
 
@@ -722,7 +723,7 @@ The storyboard style must match:
 # -刻意使用电影语言：特写镜头表达情感，广角镜头表达背景，以及不同的角度来吸引观众的注意力。 
 # 保持角色名称在视觉描述和说话字段与角色列表一致。在视觉描述中，将名称括在尖括号中（例如，<Alice>），但不要在dialogue或speaker字段中。 
 # - 汉字也是角色: 如果汉字包含在character列表中，那也要将其作为角色包含在视觉描述中。如"日"字如果出现在character列表，那要变成<日字>。
-# -在描述人物时，需包含人物的静态特征(such as facial features and body shape)和动态特征(such as clothing and accessories)的描述
+## -在描述人物时，需包含人物的静态特征(such as facial features and body shape)和动态特征(such as clothing and accessories)的描述
 # -位置一致性：确保生成的镜头位置与脚本设置相匹配。当场景发生在室外时，不要引入室内元素（如桌子、书架），反之亦然。背景元素必须严格遵守脚本所描述的环境。 
 # -时间一致性：如果未特别说明，保持镜头时间与脚本设置相匹配，保证光感一致性。如是晚上户外，深蓝色夜幕铺展，环境光线柔和静谧，那要保持一致，不能缺失后导致是白天亮光。
 # -如果镜头出现非角色列表中的角色，要根据场景详细描述其静态特征(such as facial features and body shape)和动态特征(such as clothing and accessories)
