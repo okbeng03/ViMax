@@ -130,7 +130,7 @@ class NarrationAgent:
         
         return narration
     
-    async def generate_audio(self, narration: List[NarrationItem], output_path: str):
+    async def generate_audio(self, narration: List[NarrationItem], output_path: str, comfyui_enable: bool = False):
         """
         生成旁白音频
         
@@ -161,6 +161,15 @@ class NarrationAgent:
         concat_parts = []
         for i, item in enumerate(narration):
             if item.narration_text:
+                # 前置静音
+                if item.start_time is not None and item.start_time > 0:
+                    silence_before = os.path.join(cache_dir, f"silence_before_{i}.flac")
+                    subprocess.run([
+                        "ffmpeg", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo",
+                        "-t", str(item.start_time), "-y", silence_before
+                    ], check=True, capture_output=True)
+                    concat_parts.append(silence_before)
+                    
                 adjusted_path = os.path.join(cache_dir, f"narration_adjusted_{i}.flac")
                 temp_path = os.path.join(cache_dir, f"narration_temp_{i}.flac")
             
@@ -174,6 +183,9 @@ class NarrationAgent:
                     item.estimated_duration = actual_duration
                 else:
                     if not os.path.exists(temp_path):
+                        if not comfyui_enable:
+                            return
+
                         audio_output = await self.audio_generator.generate_single_audio(
                             prompt=item.narration_text,
                             character="旁白"
@@ -209,15 +221,6 @@ class NarrationAgent:
                     
                     concat_parts.append(temp_path)
 
-            # 前置静音
-            if item.start_time is not None and item.start_time > 0:
-                silence_before = os.path.join(cache_dir, f"silence_before_{i}.flac")
-                subprocess.run([
-                    "ffmpeg", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo",
-                    "-t", str(item.start_time), "-y", silence_before
-                ], check=True, capture_output=True)
-                concat_parts.append(silence_before)
-                
             # 后置静音（填充到总时长）
             silence_after = os.path.join(cache_dir, f"silence_after_{i}.flac")
             silence_after_duration = max(0.0, item.shot_duration - (item.start_time or 0) - (item.estimated_duration or 0))
