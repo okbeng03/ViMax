@@ -39,6 +39,7 @@ class Idea2VideoPipeline:
         self.video_generator = video_generator
         self.audio_generator = audio_generator
         self.working_dir = working_dir
+        self.comfyui_base_url = comfyui_base_url
         self.interrupt_step = interrupt_step
         self.mode = mode
         self.hanzi = hanzi
@@ -86,7 +87,7 @@ class Idea2VideoPipeline:
     async def _check_comfyui_health(self):
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(f"{self.base_url}/", timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                async with session.get(f"{self.comfyui_base_url}/", timeout=aiohttp.ClientTimeout(total=5)) as resp:
                     return resp.status == 200
         except Exception:
             return False
@@ -318,7 +319,7 @@ class Idea2VideoPipeline:
                 clip.close()
                 continue
 
-            if self.comfyui_enable:
+            if not self.comfyui_enable:
                 transition_results.append(None)
                 continue
 
@@ -569,7 +570,7 @@ class Idea2VideoPipeline:
         else:
             # 生成场景视频，拆解成镜头再合成
             for idx, scene_script in enumerate(scene_scripts):
-                # if idx != 5:
+                # if idx != 7:
                 #     continue
 
                 scene_working_dir = os.path.join(self.working_dir, f"scene_{idx}")
@@ -594,8 +595,8 @@ class Idea2VideoPipeline:
                 all_video_paths.append(final_video_path)
                 print(f"☑️ Completed scene {idx} video generation, saved to {final_video_path}.")
 
-            if self.interrupt_step is not None:
-                return
+            # if self.interrupt_step is not None:
+            #     return
 
             # latent continuity transition
             scene_transitions = await self.generate_scene_transitions(
@@ -619,6 +620,10 @@ class Idea2VideoPipeline:
                     if idx < len(scene_transitions) and scene_transitions[idx] is not None:
                         trans_path, _ = scene_transitions[idx]
                         video_clips.append(VideoFileClip(trans_path, audio=False))
+
+                intro_video_path = os.path.join(self.working_dir, "intro", "final_video.mp4")
+                if os.path.exists(intro_video_path):
+                    video_clips.insert(0, VideoFileClip(intro_video_path, audio=True))
                 
                 if self.mode == "hanzi" and hanzi_video_path:
                     video_clips.append(VideoFileClip(hanzi_video_path, audio=True))
