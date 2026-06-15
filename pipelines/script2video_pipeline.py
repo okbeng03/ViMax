@@ -230,6 +230,9 @@ class Script2VideoPipeline:
             tasks = []
 
             for shot in shot_descriptions:
+                # if shot.idx != 0:
+                #     continue
+
                 tasks.append(
                     self.generate_frame_for_single_shot(
                         shot=shot,
@@ -719,7 +722,7 @@ class Script2VideoPipeline:
 
         if not self.comfyui_enable:
             return
-            
+
         reference_image_path_and_text_pairs, prompt = selector_output["reference_image_path_and_text_pairs"], selector_output["text_prompt"]
         prefix_prompt = f"style: {style}\n"
         # for i, (image_path, text) in enumerate(reference_image_path_and_text_pairs):
@@ -728,20 +731,21 @@ class Script2VideoPipeline:
         reference_image_paths = [item[0] for item in reference_image_path_and_text_pairs]
 
         # 检查 reference_image_paths，如果有引用非同一个 shot index 的首尾帧，则 wait
-        for reference_image_path in reference_image_paths:
-            ref_frame_type = None
-            for ft in ["first_frame", "last_frame"]:
-                if ft in reference_image_path:
-                    ref_frame_type = ft
-                    break
+        if not self.gacha_config:
+            for reference_image_path in reference_image_paths:
+                ref_frame_type = None
+                for ft in ["first_frame", "last_frame"]:
+                    if ft in reference_image_path:
+                        ref_frame_type = ft
+                        break
 
-            if ref_frame_type:
-                parts = reference_image_path.split("/")
-                shots_idx = parts.index("shots") if "shots" in parts else -1
-                frame_index = int(parts[shots_idx + 1]) if shots_idx >= 0 else None
+                if ref_frame_type:
+                    parts = reference_image_path.split("/")
+                    shots_idx = parts.index("shots") if "shots" in parts else -1
+                    frame_index = int(parts[shots_idx + 1]) if shots_idx >= 0 else None
 
-                if frame_index is not None:
-                    await self.frame_events[frame_index][ref_frame_type].wait()
+                    if frame_index is not None:
+                        await self.frame_events[frame_index][ref_frame_type].wait()
 
         frame_image: ImageOutput = await self.image_generator.generate_single_image(
             prompt=prompt,
