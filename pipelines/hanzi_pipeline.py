@@ -842,8 +842,8 @@ class HanziPipeline:
         # =========================
         # 参数
         # =========================
-        video_width = 1344
-        video_height = 736
+        video_width = 1680
+        video_height = 960
 
         blackboard_path = os.path.join(assets_dir, "blackboard.png")
         
@@ -883,9 +883,9 @@ class HanziPipeline:
             ], check=True, capture_output=True)
 
         # 视频区域
-        video_size = 300
-        video_x = 522
-        video_y = 286
+        video_size = 400
+        video_x = 640
+        video_y = 356
 
         # =========================
         # label 动画参数
@@ -964,7 +964,7 @@ class HanziPipeline:
                 f"borderw=2:"
                 f"bordercolor=black:"
                 f"x={x_center}:"
-                f"y=190:"
+                f"y=260:"
                 f"alpha='{alpha_expr}'"
                 f"[{next_layer}]"
             )
@@ -1378,11 +1378,11 @@ class HanziPipeline:
         
         # 构建 ffmpeg 视频合成命令
         # 视频尺寸
-        video_width = 1344
-        video_height = 736
+        video_width = 1680
+        video_height = 960
         
         # 拼音文字位置和样式（居中显示）
-        pinyin_y = 190  # y 位置
+        pinyin_y = 260  # y 位置
         font_size = 80  # 字体大小
         
         # 计算每个拼音的显示时间
@@ -1406,8 +1406,8 @@ class HanziPipeline:
         filter_parts.append(f"[0:v]scale={video_width}:{video_height}:force_original_aspect_ratio=increase,crop={video_width}:{video_height}[bg]")
         
         # 汉字图片：位置 522, 286，大小 300x300
-        filter_parts.append(f"[1:v]scale=300:300[hanzi]")
-        filter_parts.append(f"[bg][hanzi]overlay=522:286[bg_with_hanzi]")
+        filter_parts.append(f"[1:v]scale=400:400[hanzi]")
+        filter_parts.append(f"[bg][hanzi]overlay=640:356[bg_with_hanzi]")
         
         # 使用 drawtext 显示拼音（白色，居中）
         # 居中位置 x=(w-text_w)/2
@@ -1544,6 +1544,9 @@ class HanziPipeline:
         if os.path.exists(final_audio_path):
             print(f"🚀 Skipped generating stroke audio, already exists")
         else:
+            if not self.comfyui_enable:
+                return ""
+
             # 使用 chat_model 生成笔画顺序文本
             stroke_prompt = f'生成汉字"{self.hanzi}"的笔画顺序。只返回笔画顺序的文案，如竖、横、横'
             print(f"🧠 Generating stroke order text...")
@@ -1617,13 +1620,13 @@ class HanziPipeline:
         mi_grid_path = os.path.join(assets_dir, "mi.png")
         
         # 视频尺寸
-        video_width = 1344
-        video_height = 736
+        video_width = 1680
+        video_height = 960
         
         # 米字格和 gif 尺寸及位置
-        grid_size = 360
-        grid_x = 492
-        grid_y = 220
+        grid_size = 440
+        grid_x = 620
+        grid_y = 326
         
         # 构建 ffmpeg 命令
         # 1. 背景铺满时长
