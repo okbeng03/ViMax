@@ -137,6 +137,7 @@ Do NOT:
 - For character portraits, you can only select at most one image from multiple views (front, side, back). Choose the most appropriate one based on the frame description. For example, when depicting a character from the side, choose the side view of the character.
 - Note: The focus of the lens should be on the upper or lower body area. Do not abruptly present a truncated body, which is half of the meaning of the lens. Maintain a three-dimensional proportion. Avoid presenting a body that is cut off at the waist or legs.
 - Select at most **8** optimal reference image descriptions.
+- **没有出现在参考图里的角色，必须保持详细描述其静态&动态特征**
 """
 
 # [Role] 
@@ -353,7 +354,7 @@ class ReferenceImageSelector:
         config = resolve_chat_model_config(
             {
                 "model_provider": "qwen",
-                "model": "qwen3.6-27b",
+                "model": "qwen3.5-plus-2026-04-20",
             }
         )
         self.chat_model = init_chat_model(**config)
