@@ -1843,6 +1843,9 @@ class HanziPipeline:
 
         # Step 6: 生成演变动画
         transition_video_path = await self.generate_evolution_video(glyph_png_paths)
+
+        if self.check_interrupt("transition"):
+            return ""
         
         # Step 7: 合并视频
         final_video_path = await self.merge_videos([py_video_path, stroke_video_path, transition_video_path])

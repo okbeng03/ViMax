@@ -511,11 +511,11 @@ class Idea2VideoPipeline:
                 with open(hanzi_idea_path, "r", encoding="utf-8") as f:
                     hanzi_idea = f.read()
 
-        if self.check_interrupt("hanzi"):
+        if self.interrupt_step in ["crawl", "download", "idea", "transition", "video", "hanzi"]:
             return
-        
+
         # 生成故事
-        story = await self.develop_story(idea=idea + "\n" + hanzi_idea, user_requirement=user_requirement)
+        story = await self.develop_story(idea="### 序幕\n" + idea + "\n\n" + hanzi_idea if hanzi_idea else idea, user_requirement=user_requirement)
         
         if self.check_interrupt("story"):
             return
@@ -595,8 +595,8 @@ class Idea2VideoPipeline:
                 all_video_paths.append(final_video_path)
                 print(f"☑️ Completed scene {idx} video generation, saved to {final_video_path}.")
 
-            # if self.interrupt_step is not None:
-            #     return
+            if self.interrupt_step is not None and self.interrupt_step != "scene_transition":
+                return
 
             # latent continuity transition
             scene_transitions = await self.generate_scene_transitions(
