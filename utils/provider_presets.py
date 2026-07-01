@@ -10,6 +10,11 @@ import os
 import logging
 from typing import Dict, Any, Optional
 
+from langchain.chat_models import init_chat_model
+from langchain_core.language_models import BaseChatModel
+
+from .completion_logger import _patch_chat_model
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -32,7 +37,7 @@ PROVIDER_PRESETS: Dict[str, Dict[str, Any]] = {
     "qwen": {
         "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
         "env_key": "DASHSCOPE_API_KEY",
-        "default_model": "qwen3.6-max-preview",
+        "default_model": "qwen3.5-122b-a10b",
         "models": [
             "qwen3.6-plus",
             "qwen3.6-max-preview",
@@ -41,6 +46,18 @@ PROVIDER_PRESETS: Dict[str, Dict[str, Any]] = {
             "qwen3-max",
             "qwen-vl-max",
             "deepseek-v4-pro",
+            "qwen3.5-122b-a10b",
+            "qwen3.7-max-2026-05-20",
+            "qwen3.7-max-2026-05-17",
+            "qwen3.7-max",
+            "kimi-k2.6",
+            "qwen3.6-27b",
+            "qwen3.7-max-preview",
+            "qwen3.6-flash-2026-04-16",
+            "qwen3.6-plus-2026-04-02",
+            "deepseek-v4-flash",
+            "deepseek-v4-flash",
+            "qwen3.7-plus-2026-05-26"
         ],
         "temperature_range": (0.0, 1.0),
     },
@@ -114,3 +131,14 @@ def detect_provider_from_env() -> Optional[str]:
         if env_key and os.environ.get(env_key):
             return name
     return None
+
+
+def create_chat_model(**init_args: Any) -> BaseChatModel:
+    """解析 provider preset 并创建 chat_model，自动记录 LLM 请求到 completions 目录。
+
+    等价于 ``init_chat_model(**resolve_chat_model_config(init_args))``，
+    但会在 ainvoke/invoke 方法上打 patch，直接拦截原始 messages 写入日志。
+    """
+    resolved = resolve_chat_model_config(init_args)
+    model = init_chat_model(**resolved)
+    return _patch_chat_model(model)
