@@ -9,7 +9,7 @@ from pathlib import Path
 from io import BytesIO
 
 
-@retry
+@retry(3)
 def download_image(url, save_path):
     try:
         logging.info(f"Downloading image from {url} to {save_path}")
