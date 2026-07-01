@@ -29,7 +29,8 @@ from langchain.chat_models.base import BaseChatModel
 
 from utils.image import download_image
 from utils.audio import download_audio
-from utils.provider_presets import resolve_chat_model_config
+from utils.provider_presets import create_chat_model
+from utils.completion_logger import set_working_dir
 from agents.hanzi_creative_agent import HanziCreativeAgent
 from agents.hanzi_evolution_agent import HanziEvolutionAgent, EvolutionTransitions
 
@@ -92,8 +93,7 @@ class HanziPipeline:
         with open(config_path, "r", encoding="utf-8") as f:
             config = yaml.safe_load(f)
 
-        chat_model_args = resolve_chat_model_config(config["chat_model"]["init_args"])
-        chat_model = init_chat_model(**chat_model_args)
+        chat_model = create_chat_model(**config["chat_model"]["init_args"])
         backend = RenderBackend.from_config(config)
         hanzi = config.get("hanzi")
 
@@ -326,6 +326,18 @@ class HanziPipeline:
                         # 已找到，col_type_map 要移除对应 idx
                         # del col_type_map[col_idx]
         
+        if not glyphs:
+            # 请求楷书
+            kaishu_img = soup.find('img', id='glyph-img')
+            if kaishu_img:
+                kaishu_img_url = _ensure_url_protocol(kaishu_img["src"])
+                glyphs.append({
+                    "type": "楷书",
+                    "svg_url": kaishu_img_url,
+                    "alt": "楷书",
+                })
+
+
         return glyphs
 
     async def download_and_convert_svg_to_png(
