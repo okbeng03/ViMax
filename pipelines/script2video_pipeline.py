@@ -15,9 +15,8 @@ from agents.prompt_converter import ShotDescriptionWithDialogues, Dialogue
 from agents.narration_agent import NarrationItem, ShotItem, Interval
 import yaml
 from interfaces import *
-from langchain.chat_models import init_chat_model
 from tools.render_backend import RenderBackend
-from utils.provider_presets import resolve_chat_model_config
+from utils.provider_presets import create_chat_model
 
 class Script2VideoPipeline:
 
@@ -69,8 +68,7 @@ class Script2VideoPipeline:
         with open(config_path, "r") as f:
             config = yaml.safe_load(f)
 
-        chat_model_args = resolve_chat_model_config(config["chat_model"]["init_args"])
-        chat_model = init_chat_model(**chat_model_args)
+        chat_model = create_chat_model(**config["chat_model"]["init_args"])
         backend = RenderBackend.from_config(config)
 
         return cls(
@@ -176,8 +174,8 @@ class Script2VideoPipeline:
         #     shot_descriptions=shot_descriptions,
         # )
         
-        # if self.check_interrupt("camera_tree"):
-        #     return
+        if self.check_interrupt("camera_tree"):
+            return
         
         if self.gacha_config:
             # 抽卡模式
@@ -194,7 +192,7 @@ class Script2VideoPipeline:
                     shot=shot_description,
                     shot_idx=shot_idx, 
                     frame_type=self.gacha_config["type"], 
-                    first_shot_ff_path_and_text_pair=(os.path.join(self.working_dir, "shots", shot_idx, "first_frame.png"), shot_description.ff_desc) if self.gacha_config["type"] == "first_frame" else None,
+                    first_shot_ff_path_and_text_pair=(os.path.join(self.working_dir, "shots", f"{shot_idx}", "first_frame.png"), shot_description.ff_desc) if self.gacha_config["type"] != "first_frame" else None,
                     frame_desc=shot_description.ff_desc if self.gacha_config["type"] == "first_frame" else shot_description.lf_desc,
                     visible_characters=[characters[idx] for idx in (shot_description.ff_vis_char_idxs if self.gacha_config["type"] == "first_frame" else shot_description.lf_vis_char_idxs)],
                     character_portraits_registry=character_portraits_registry,
