@@ -12,9 +12,8 @@ import json
 import aiohttp
 from moviepy import VideoFileClip, concatenate_videoclips
 import yaml
-from langchain.chat_models import init_chat_model
 from tools.render_backend import RenderBackend
-from utils.provider_presets import resolve_chat_model_config
+from utils.provider_presets import create_chat_model
 from utils.voice import register_voice, VoiceManager
 from interfaces import *
 
@@ -59,14 +58,14 @@ class Idea2VideoPipeline:
 
         os.makedirs(os.path.join(self.working_dir, "workflows"), exist_ok=True)
         os.makedirs(os.path.join(self.working_dir, "transitions"), exist_ok=True)
+        os.makedirs(os.path.join(self.working_dir, "voices"), exist_ok=True)
 
     @classmethod
     def init_from_config(cls, config_path: str):
         with open(config_path, "r") as f:
             config = yaml.safe_load(f)
 
-        chat_model_args = resolve_chat_model_config(config["chat_model"]["init_args"])
-        chat_model = init_chat_model(**chat_model_args)
+        chat_model = create_chat_model(**config["chat_model"]["init_args"])
         backend = RenderBackend.from_config(config)
 
         return cls(
@@ -78,7 +77,7 @@ class Idea2VideoPipeline:
             comfyui_base_url=config["comfyui_base_url"],
             interrupt_step=config["interrupt_step"],
             mode=config["mode"],
-            hanzi=config["hanzi"],
+            hanzi=config.get("hanzi", ""),
             new_character=config.get("new_character", "").split(",") if config.get("new_character") else None,
             relate_hanzi=config.get("relate_hanzi", "").split(",") if config.get("relate_hanzi") else None,
             gacha_config=config["gacha_config"],
@@ -141,11 +140,15 @@ class Idea2VideoPipeline:
 
         voice_list = VoiceManager.instance().list_all()
 
-        # TODO:: 检查角色是否存在音色，不存在则创建音色
-        # for character in characters:
-        #     if character.identifier_in_scene not in voice_list:
-        #         voice = await self.voice_designer.design_and_register(character, self.audio_generator)
-        #         register_voice(name=voice["character"], gender=voice["gender"])
+        # 检查角色是否存在音色，不存在则创建音色
+        for character in characters:
+            if character.identifier_in_scene not in voice_list:
+                # 如果 identifier_in_scene 包含 “字” 字符，则跳过
+                if "字" in character.identifier_in_scene:
+                    continue
+
+                voice = await self.voice_designer.design_and_register(character, self.audio_generator)
+                register_voice(name=voice["character"], gender=voice["gender"])
 
         return characters
 
