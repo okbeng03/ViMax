@@ -29,22 +29,20 @@ from interfaces.audio_output import AudioOutput
 from tools.comfyui_workflow_runner import ComfyUIWorkflowRunner
 from utils.rate_limiter import RateLimiter
 from agents.prompt_converter import Dialogue
+from utils.voice import get_voice
 
 logger = logging.getLogger(__name__)
 
 workflow_path = "workflows/tts_qwen.json"
 workflow_ui_path = "workflows/tts_qwen_ui.json"
+design_voice_workflow_path = "workflows/qwen-tts-design-voice.json"
+design_voice_workflow_ui_path = "workflows/qwen-tts-design-voice_ui.json"
+save_voice_workflow_path = "workflows/qwen-tts-save-voice.json"
+save_voice_workflow_ui_path = "workflows/qwen-tts-save-voice_ui.json"
 output_node_ids = ["64"]
+design_voice_output_node_ids = ["41"]
+save_voice_output_node_ids = ["41"]
 max_noise = 2**50 - 1
-
-register_voices = {
-    "字博士": "字博士",
-    "小豆丁": "小豆丁",
-    "旁白": "旁白",
-    "default": "男生",
-    "Male": "男生",
-    "Female": "女生",
-}
 
 class AudioGeneratorComfyUIQwenTTS:
     """
@@ -78,19 +76,55 @@ class AudioGeneratorComfyUIQwenTTS:
             rate_limiter=rate_limiter,
         )
     
+    async def load_design_workflow(self, runner: ComfyUIWorkflowRunner, prompt: str, text: str, gender: Optional[str] = None) -> dict[str, Any]:
+        """加载音色设计工作流"""
+
+        workflow = runner.load_workflow(design_voice_workflow_path)
+        workflow["41"]["inputs"]["filename_prefix"] = f"audio/{str(uuid.uuid4())}"
+        workflow["38"]["inputs"]["text"] = text
+        workflow["38"]["inputs"]["instruct"] = prompt
+        workflow["38"]["inputs"]["seed"] = random.randint(1, max_noise)
+        
+        # ui
+        ui_workflow = runner.load_workflow(design_voice_workflow_ui_path)
+        nodes = ui_workflow["nodes"]
+        output_node = next((node for node in nodes if node["id"] == 41), None)
+        output_node["widgets_values"][0] = f"audio/{str(uuid.uuid4())}"
+        voice_node = next((node for node in nodes if node["id"] == 38), None)
+        voice_node["widgets_values"][0] = text
+        voice_node["widgets_values"][1] = prompt
+        voice_node["widgets_values"][6] = random.randint(1, max_noise)
+        
+        return workflow, ui_workflow
+
+    async def load_save_workflow(self, runner: ComfyUIWorkflowRunner, character: str, text: str, audio_path: str) -> dict[str, Any]:
+        """加载音色设计工作流"""
+
+        audio_name = await runner.upload_audio(audio_path)
+
+        workflow = runner.load_workflow(save_voice_workflow_path)
+        workflow["41"]["inputs"]["filename"] = character
+        workflow["24"]["inputs"]["audio"] = audio_name
+        workflow["40"]["inputs"]["ref_text"] = text
+        workflow["40"]["inputs"]["seed"] = random.randint(1, max_noise)
+        
+        # ui
+        ui_workflow = runner.load_workflow(save_voice_workflow_ui_path)
+        nodes = ui_workflow["nodes"]
+        output_node = next((node for node in nodes if node["id"] == 41), None)
+        output_node["widgets_values"][0] = character
+        voice_node = next((node for node in nodes if node["id"] == 24), None)
+        voice_node["widgets_values"][0] = audio_name
+        voice_clone_node = next((node for node in nodes if node["id"] == 40), None)
+        voice_clone_node["widgets_values"][5] = text
+        voice_clone_node["widgets_values"][6] = random.randint(1, max_noise)
+        
+        return workflow, ui_workflow
     
     async def load_workflow(self, runner: ComfyUIWorkflowRunner, prompt: str, character: str, gender: Optional[str] = None) -> dict[str, Any]:
-        """加载文生图工作流"""
-        
-        if character not in register_voices:
-            if gender == "Male":
-                voice = register_voices["Male"]
-            elif gender == "Female":
-                voice = register_voices["Female"]
-            else:
-                voice = register_voices["default"]
-        else:
-            voice = register_voices[character]    
+        """加载音频生成工作流"""
+
+        voice = get_voice(name=character, gender=gender)
     
         workflow = runner.load_workflow(workflow_path)
         workflow["64"]["inputs"]["filename_prefix"] = f"audio/{str(uuid.uuid4())}"
@@ -417,3 +451,82 @@ class AudioGeneratorComfyUIQwenTTS:
                 os.remove(output_path)
             logger.error(f"Failed to concatenate audio: {e}")
             raise RuntimeError(f"Failed to concatenate audio: {e}")
+
+    async def design_voice(self, character: str, prompt: str, text: str, **kwargs) -> AudioOutput:
+        """
+        设计音色
+        """
+
+        logger.info(f"Designing voice for {character}")
+
+        runner = ComfyUIWorkflowRunner(
+            base_url=self.base_url,
+            rate_limiter=self.rate_limiter,
+        )
+        workflow, ui_workflow = await self.load_design_workflow(runner=runner, prompt=prompt, text=text)
+  
+        # 执行工作流
+        outputs = await runner.run(
+            workflow_path=design_voice_workflow_path,
+            workflow=workflow,
+            output_node_ids=design_voice_output_node_ids,
+            ui_workflow=ui_workflow,
+        )
+        # 提取输出路径
+        output_paths = runner.get_output_paths(outputs)
+        
+        if not output_paths:
+            raise RuntimeError("No audio output generated")
+        
+        # 获取第一个输出节点的结果
+        first_output = list(output_paths.values())[0]
+
+        if isinstance(first_output, list) and len(first_output) > 0:
+            # 输出是音频路径列表
+            audio_path = first_output[0]
+            return AudioOutput(fmt="url", ext="mp3", data=audio_path)
+        elif isinstance(first_output, str):
+            # 输出是单个音频路径
+            return AudioOutput(fmt="url", ext="mp3", data=first_output)
+        else:
+            raise RuntimeError(f"Unexpected output format: {first_output}")
+
+
+    async def register_voice(self, character: str, text, audio_path: str, **kwargs):
+        """
+        注册音色
+        """
+
+        logger.info(f"Save voice for {character}")
+
+        runner = ComfyUIWorkflowRunner(
+            base_url=self.base_url,
+            rate_limiter=self.rate_limiter,
+        )
+        workflow, ui_workflow = await self.load_save_workflow(runner=runner, character=character, text=text, audio_path=audio_path)
+  
+        # 执行工作流
+        await runner.run(
+            workflow_path=save_voice_workflow_path,
+            workflow=workflow,
+            output_node_ids=save_voice_output_node_ids,
+            ui_workflow=ui_workflow,
+        )
+        # # 提取输出路径
+        # output_paths = runner.get_output_paths(outputs)
+        
+        # if not output_paths:
+        #     raise RuntimeError("No audio output generated")
+        
+        # # 获取第一个输出节点的结果
+        # first_output = list(output_paths.values())[0]
+
+        # if isinstance(first_output, list) and len(first_output) > 0:
+        #     # 输出是音频路径列表
+        #     audio_path = first_output[0]
+        #     return AudioOutput(fmt="url", ext="mp3", data=audio_path)
+        # elif isinstance(first_output, str):
+        #     # 输出是单个音频路径
+        #     return AudioOutput(fmt="url", ext="mp3", data=first_output)
+        # else:
+        #     raise RuntimeError(f"Unexpected output format: {first_output}")
