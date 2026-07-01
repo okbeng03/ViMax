@@ -1,5 +1,6 @@
 import asyncio
 from pipelines.script2video_pipeline import Script2VideoPipeline
+from utils.completion_logger import set_working_dir
 
 
 # SET YOUR OWN SCRIPT, USER REQUIREMENT, AND STYLE HERE
@@ -27,6 +28,7 @@ style = "Anime Style"
 
 async def main():
     pipeline = Script2VideoPipeline.init_from_config(config_path="configs/script2video.yaml")
+    set_working_dir(pipeline.working_dir)
     await pipeline(script=script, user_requirement=user_requirement, style=style)
 
 

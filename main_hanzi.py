@@ -12,6 +12,7 @@ logging.basicConfig(
 async def main():
     pipeline = HanziPipeline.init_from_config(
         config_path="configs/hanzi.yaml")
+    set_working_dir(pipeline.working_dir)
     await pipeline()
 
 if __name__ == "__main__":
