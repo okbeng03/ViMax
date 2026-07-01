@@ -1,0 +1,283 @@
+{
+  "id": "cd732cf0-c62d-4c2d-998a-e0e40c8464c5",
+  "revision": 0,
+  "last_node_id": 42,
+  "last_link_id": 49,
+  "nodes": [
+    {
+      "id": 38,
+      "type": "FB_Qwen3TTSVoiceDesign",
+      "pos": [
+        510,
+        -380
+      ],
+      "size": [
+        400,
+        580
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "label": "text",
+          "name": "text",
+          "type": "STRING",
+          "widget": {
+            "name": "text"
+          },
+          "link": null
+        },
+        {
+          "label": "instruct",
+          "name": "instruct",
+          "type": "STRING",
+          "widget": {
+            "name": "instruct"
+          },
+          "link": null
+        },
+        {
+          "label": "model_choice",
+          "name": "model_choice",
+          "type": "COMBO",
+          "widget": {
+            "name": "model_choice"
+          },
+          "link": null
+        },
+        {
+          "label": "device",
+          "name": "device",
+          "type": "COMBO",
+          "widget": {
+            "name": "device"
+          },
+          "link": null
+        },
+        {
+          "label": "precision",
+          "name": "precision",
+          "type": "COMBO",
+          "widget": {
+            "name": "precision"
+          },
+          "link": null
+        },
+        {
+          "label": "language",
+          "name": "language",
+          "type": "COMBO",
+          "widget": {
+            "name": "language"
+          },
+          "link": null
+        },
+        {
+          "label": "seed",
+          "name": "seed",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "seed"
+          },
+          "link": null
+        },
+        {
+          "label": "max_new_tokens",
+          "name": "max_new_tokens",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "max_new_tokens"
+          },
+          "link": null
+        },
+        {
+          "label": "top_p",
+          "name": "top_p",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "top_p"
+          },
+          "link": null
+        },
+        {
+          "label": "top_k",
+          "name": "top_k",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "top_k"
+          },
+          "link": null
+        },
+        {
+          "label": "temperature",
+          "name": "temperature",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "temperature"
+          },
+          "link": null
+        },
+        {
+          "label": "repetition_penalty",
+          "name": "repetition_penalty",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "repetition_penalty"
+          },
+          "link": null
+        },
+        {
+          "label": "attention",
+          "name": "attention",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "attention"
+          },
+          "link": null
+        },
+        {
+          "label": "unload_model_after_generate",
+          "name": "unload_model_after_generate",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "unload_model_after_generate"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "label": "audio",
+          "name": "audio",
+          "type": "AUDIO",
+          "links": [
+            48
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "FB_Qwen3TTSVoiceDesign",
+        "cnr_id": "qwen3-tts-comfyui",
+        "ver": "c7db6c2eb0f269d358c53bb71688dc95de4f7d07",
+        "enableTabs": false,
+        "tabWidth": 65,
+        "tabXOffset": 10,
+        "hasSecondTab": false,
+        "secondTabText": "Send Back",
+        "secondTabOffset": 80,
+        "secondTabWidth": 65,
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.4.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "有些事，只要国家需要，就得有人扛起来。\n我们那一代人，是背着泥土铺路的；\n你们要做的，是让这条路，通向星辰大海。",
+        "角色姓名：林怀岳\n音色信息：音量洪亮，音域低沉，力度感强的中年男性声音。\n身份背景：某国家重点科研项目首席顾问，年近七十的资深战略科学家。曾参与国家重大科技攻关工程，历经数十年风雨，见证了从落后追赶到自主创新的艰难历程。现任国家科技咨询委员会终身荣誉委员，仍坚持在一线培养青年人才，为国家战略发展建言献策。\n外貌特征：身形挺拔，两鬓斑白，眉宇间刻着岁月沉淀的坚毅。常着深色中山装或简洁正装，眼神沉静而锐利，举手投足间自带威严与从容。\n性格特质：意志如钢，信念坚定，面对挑战从不退缩；胸怀家国，心系民族未来，将个人命运与国家兴衰紧密相连；严谨自律，言出必行，话语中充满责任感与历史担当；外冷内热，表面严肃，实则对后辈寄予厚望，甘为人梯。\n人生信条：“我们这一代人，不是为了站在光里，而是为了把路铺到光里。”",
+        "1.7B",
+        "auto",
+        "bf16",
+        "Chinese",
+        356099600882452,
+        "randomize",
+        2048,
+        0.8,
+        20,
+        1,
+        1.05,
+        "auto",
+        false
+      ]
+    },
+    {
+      "id": 41,
+      "type": "SaveAudio",
+      "pos": [
+        957.2252928143599,
+        -414.8161828937912
+      ],
+      "size": [
+        270,
+        112
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "link": 48
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.17.0",
+        "Node name for S&R": "SaveAudio",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.4.1"
+        }
+      },
+      "widgets_values": [
+        "audio/ComfyUI"
+      ]
+    }
+  ],
+  "links": [
+    [
+      48,
+      38,
+      0,
+      41,
+      0,
+      "AUDIO"
+    ]
+  ],
+  "groups": [
+    {
+      "id": 3,
+      "title": "Design Voice",
+      "bounding": [
+        500,
+        -450,
+        420,
+        663.6
+      ],
+      "color": "#3f789e",
+      "font_size": 24,
+      "flags": {}
+    }
+  ],
+  "config": {},
+  "extra": {
+    "workflowRendererVersion": "LG",
+    "ds": {
+      "scale": 1.196858175595241,
+      "offset": [
+        122.06509150844582,
+        667.6742699575818
+      ]
+    },
+    "frontendVersion": "1.41.20",
+    "VHS_latentpreview": false,
+    "VHS_latentpreviewrate": 0,
+    "VHS_MetadataImage": true,
+    "VHS_KeepIntermediate": true,
+    "ue_links": [],
+    "links_added_by_ue": []
+  },
+  "version": 0.4
+}

@@ -1,0 +1,77 @@
+{
+  "24": {
+    "inputs": {
+      "audio": "贞贞.flac",
+      "audioUI": "/api/view?filename=%E8%B4%9E%E8%B4%9E.flac&type=input&subfolder=&rand=0.8139209906300836"
+    },
+    "class_type": "LoadAudio",
+    "_meta": {
+      "title": "加载音频"
+    }
+  },
+  "40": {
+    "inputs": {
+      "target_text": "你们要做的，是让这条路，通向星辰大海。",
+      "model_choice": "1.7B",
+      "device": "auto",
+      "precision": "bf16",
+      "language": "Auto",
+      "ref_text": "안녕하세요. 저는 고윤정입니다. 팁팔이 벌써 사을제 저를 무시하고 있어요. 제발 알려주세요. 제가 근여석을 훗내줄 거예요.",
+      "seed": 122741355184620,
+      "max_new_tokens": 4096,
+      "top_p": 0.8,
+      "top_k": 20,
+      "temperature": 1,
+      "repetition_penalty": 1.05,
+      "x_vector_only": false,
+      "attention": "auto",
+      "unload_model_after_generate": false,
+      "custom_model_path": "",
+      "ref_audio": [
+        "24",
+        0
+      ]
+    },
+    "class_type": "FB_Qwen3TTSVoiceClone",
+    "_meta": {
+      "title": "🎭 Qwen3-TTS VoiceClone"
+    }
+  },
+  "41": {
+    "inputs": {
+      "filename": "贞贞",
+      "ref_text": "你们要做的，是让这条路，通向星辰大海。",
+      "voice_clone_prompt": [
+        "46",
+        0
+      ],
+      "audio": [
+        "40",
+        0
+      ]
+    },
+    "class_type": "FB_Qwen3TTSSaveVoice",
+    "_meta": {
+      "title": "💾 Qwen3-TTS SaveVoice"
+    }
+  },
+  "46": {
+    "inputs": {
+      "ref_text": "你们要做的，是让这条路，通向星辰大海。",
+      "model_choice": "1.7B",
+      "device": "auto",
+      "precision": "bf16",
+      "attention": "auto",
+      "x_vector_only": false,
+      "unload_model_after_generate": false,
+      "ref_audio": [
+        "40",
+        0
+      ]
+    },
+    "class_type": "FB_Qwen3TTSVoiceClonePrompt",
+    "_meta": {
+      "title": "🎭 Qwen3-TTS VoiceClonePrompt"
+    }
+  }
+}
