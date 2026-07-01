@@ -4,11 +4,11 @@ from tenacity import retry, stop_after_attempt
 from pydantic import BaseModel, Field
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.output_parsers import PydanticOutputParser
-from langchain.chat_models import init_chat_model
 from utils.image import image_path_to_b64
 
 from utils.retry import after_func
-from utils.provider_presets import resolve_chat_model_config
+from utils.provider_presets import create_chat_model
+from utils.completion_logger import log_agent
 
 system_prompt_template_select_reference_images_only_text = \
 """
@@ -351,14 +351,12 @@ class ReferenceImageSelector:
         self,
         chat_model,
     ):
-        config = resolve_chat_model_config(
-            {
-                "model_provider": "qwen",
-                "model": "qwen3.5-plus-2026-04-20",
-            }
+        self.chat_model = create_chat_model(
+            model_provider="qwen",
+            model="deepseek-v4-flash",
         )
-        self.chat_model = init_chat_model(**config)
 
+    @log_agent("ReferenceImageSelector")
     @retry(
         stop=stop_after_attempt(1),
         after=after_func,

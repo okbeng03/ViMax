@@ -22,6 +22,7 @@ from tenacity import retry, stop_after_attempt
 from interfaces.shot_description import IntermediateFrame, ShotDescription
 from interfaces.character import CharacterInScene
 from utils.retry import after_func
+from utils.completion_logger import log_agent
 
 
 logger = logging.getLogger(__name__)
@@ -374,6 +375,7 @@ class IntermediateFramePlanner:
         
         return intermediate_frames
     
+    @log_agent("IntermediateFramePlanner")
     @retry(stop=stop_after_attempt(3), after=after_func)
     async def llm_plan(
         self,

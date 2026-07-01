@@ -2,7 +2,6 @@ import logging
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain.chat_models.base import BaseChatModel
-from langchain.chat_models import init_chat_model
 from pydantic import BaseModel, Field
 from typing import List
 from tenacity import retry, stop_after_attempt
@@ -10,6 +9,7 @@ from interfaces import CharacterInScene
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from utils.retry import after_func
+from utils.completion_logger import log_agent
 
 
 system_prompt_template_extract_characters = \
@@ -99,6 +99,7 @@ class CharacterExtractor:
     ):
         self.chat_model = chat_model
 
+    @log_agent("CharacterExtractor")
     @retry(
         stop=stop_after_attempt(3),
         after=after_func,

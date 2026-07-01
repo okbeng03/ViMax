@@ -6,6 +6,7 @@ from langchain.chat_models.base import BaseChatModel
 from langchain_core.prompts import ChatPromptTemplate
 
 from utils.retry import after_func
+from utils.completion_logger import log_agent
 
 
 system_prompt_template_generate_hanzi_creative = \
@@ -137,6 +138,7 @@ class HanziCreativeAgent:
     ):
         self.chat_model = chat_model
 
+    @log_agent("HanziCreativeAgent")
     @retry(stop=stop_after_attempt(3), after=after_func)
     async def generate_creative(
         self,

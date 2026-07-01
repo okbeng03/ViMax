@@ -3,8 +3,9 @@ import logging
 import asyncio
 from typing import List, Tuple
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain.chat_models import init_chat_model
 from langchain.text_splitter import RecursiveCharacterTextSplitter
+from utils.provider_presets import create_chat_model
+from utils.completion_logger import log_agent
 
 
 
@@ -122,6 +123,7 @@ class NovelCompressor:
         return compressed_novel_chunks
 
 
+    @log_agent("NovelCompressor")
     async def compress_single_novel_chunk(
         self,
         semaphore: asyncio.Semaphore,
@@ -146,6 +148,7 @@ class NovelCompressor:
         return index, compressed_novel_chunk
     
 
+    @log_agent("NovelCompressor")
     def aggregate(
         self,
         compressed_novel_chunks: List[str],

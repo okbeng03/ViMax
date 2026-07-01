@@ -6,11 +6,11 @@ from tenacity import retry, stop_after_attempt
 from pydantic import BaseModel, Field
 
 from langchain_core.output_parsers import PydanticOutputParser
-from langchain.chat_models import init_chat_model
 from langchain.chat_models.base import BaseChatModel
-from utils.provider_presets import resolve_chat_model_config
+from utils.provider_presets import create_chat_model
 
 from utils.retry import after_func
+from utils.completion_logger import log_agent
 
 
 # ==================================================
@@ -584,14 +584,12 @@ class TransitionDirector:
         self,
         chat_model: BaseChatModel,
     ):
-        config = resolve_chat_model_config(
-            {
-                "model_provider": "qwen",
-                "model": "qwen3.6-27b",
-            }
+        self.chat_model = create_chat_model(
+            model_provider="qwen",
+            model="deepseek-v4-flash",
         )
-        self.chat_model = init_chat_model(**config)
 
+    @log_agent("TransitionDirector")
     @retry(stop=stop_after_attempt(3), after=after_func)
     async def design_transition(
         self,

@@ -3,7 +3,6 @@ import asyncio
 from pydantic import BaseModel, Field
 from tenacity import retry, stop_after_attempt
 
-from langchain.chat_models import init_chat_model
 from langchain.chat_models.base import BaseChatModel
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import PydanticOutputParser
@@ -11,7 +10,8 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 from utils.retry import after_func
 from utils.image import upload_file_and_get_url
-from utils.provider_presets import resolve_chat_model_config
+from utils.provider_presets import create_chat_model
+from utils.completion_logger import log_agent
 
 
 system_prompt_template_generate_evolution_description = \
@@ -233,20 +233,15 @@ class HanziEvolutionAgent:
         self,
         chat_model: BaseChatModel,
     ):
-        config = resolve_chat_model_config(
-            {
-                "model_provider": "qwen",
-                # "model": "qwen3.6-plus",
-                "model": "qwen-vl-max"
-            }
+        self.chat_model = create_chat_model(
+            model_provider="qwen",
+            model="qwen-vl-max",
+            default_headers={"X-DashScope-OssResourceResolve": "enable"},
         )
-        config["default_headers"] = {
-            "X-DashScope-OssResourceResolve": "enable"
-        }
-        self.chat_model = init_chat_model(**config)
         # self.chat_model = chat_model
         self.model_name = getattr(chat_model, "model_name", None) or getattr(chat_model, "model", None)
 
+    @log_agent("HanziEvolutionAgent")
     @retry(stop=stop_after_attempt(3), after=after_func)
     async def generate_transition_description(
         self,

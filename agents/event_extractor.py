@@ -4,7 +4,8 @@ import asyncio
 from typing import List
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.output_parsers import PydanticOutputParser
-from langchain.chat_models import init_chat_model
+from utils.provider_presets import create_chat_model
+from utils.completion_logger import log_agent
 from pydantic import BaseModel, Field
 from tenacity import retry, stop_after_attempt
 
@@ -83,7 +84,7 @@ class EventExtractor:
         base_url: str,
         chat_model: str,
     ):
-        self.chat_model = init_chat_model(
+        self.chat_model = create_chat_model(
             model=chat_model,
             model_provider="openai",
             api_key=api_key,
@@ -110,6 +111,7 @@ class EventExtractor:
         return events
 
 
+    @log_agent("EventExtractor")
     @retry(
         stop=stop_after_attempt(3),
         after=lambda retry_state: logging.warning(f"Retrying extract_next_event due to error: {retry_state.outcome.exception()}"),

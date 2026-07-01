@@ -3,7 +3,8 @@ import logging
 import asyncio
 from typing import List, Tuple, Dict, Optional
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain.chat_models import init_chat_model
+from utils.provider_presets import create_chat_model
+from utils.completion_logger import log_agent
 from pydantic import BaseModel, Field
 from langchain.output_parsers import PydanticOutputParser
 from interfaces import Event, Scene
@@ -204,6 +205,7 @@ class GlobalInformationPlanner:
             base_url=base_url,
         )
     
+    @log_agent("GlobalInformationPlanner")
     @retry(
         stop=stop_after_attempt(3),
         after=lambda retry_state: logging.warning(f"Retrying due to {retry_state.outcome.exception()}"),
@@ -266,6 +268,7 @@ class GlobalInformationPlanner:
 
         return characters_in_event
 
+    @log_agent("GlobalInformationPlanner")
     @retry(
         stop=stop_after_attempt(3),
         after=lambda retry_state: logging.warning(f"Retrying due to {retry_state.outcome.exception()}"),

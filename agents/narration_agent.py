@@ -6,6 +6,7 @@ import subprocess
 from pydantic import BaseModel, Field
 from tenacity import retry, stop_after_attempt
 from utils.retry import after_func
+from utils.completion_logger import log_agent
 
 from langchain.chat_models.base import BaseChatModel
 from langchain_core.output_parsers import PydanticOutputParser
@@ -109,6 +110,7 @@ class NarrationAgent:
         self.chat_model = chat_model
         self.audio_generator = audio_generator
 
+    @log_agent("NarrationAgent")
     @retry(stop=stop_after_attempt(3), after=after_func)
     async def generate_narration(self, story: str, storyboard: List[ShotItem], user_requirement: str, retry_timeout: int = 300) -> List[NarrationItem]:
         

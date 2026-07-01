@@ -19,11 +19,11 @@ import asyncio
 from typing import List, Optional
 from pydantic import BaseModel, Field
 from interfaces import CharacterInScene
-from langchain.chat_models import init_chat_model
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.output_parsers import PydanticOutputParser
 
-from utils.provider_presets import resolve_chat_model_config
+from utils.provider_presets import create_chat_model
+from utils.completion_logger import log_agent
 
 
 logger = logging.getLogger(__name__)
@@ -180,14 +180,12 @@ class PromptConverter:
             chat_model: 可选的 LLM 模型用于复杂转换
             use_llm_conversion: 是否使用 LLM 进行转换（复杂场景），否则使用规则转换
         """
-        config = resolve_chat_model_config(
-            {
-                "model_provider": "qwen",
-                "model": "qwen3.6-27b",
-            }
+        self.chat_model = create_chat_model(
+            model_provider="qwen",
+            model="deepseek-v4-flash",
         )
-        self.chat_model = init_chat_model(**config)
 
+    @log_agent("PromptConverter")
     async def convert(
         self,
         audio_desc: str,

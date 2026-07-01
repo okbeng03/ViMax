@@ -1,7 +1,8 @@
 from langchain_community.vectorstores import FAISS
 from interfaces import Event, Scene
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain.chat_models import init_chat_model
+from utils.provider_presets import create_chat_model
+from utils.completion_logger import log_agent
 from pydantic import BaseModel, Field
 from typing import List, Optional, Literal, Tuple, Dict
 from langchain_core.output_parsers import PydanticOutputParser
@@ -72,6 +73,7 @@ class SceneExtractor:
             model_provider="openai",
         )
 
+    @log_agent("SceneExtractor")
     @retry(
         stop=stop_after_attempt(5),
         after=lambda retry_state: logging.warning(f"Retrying SceneExtractor.get_next_scene due to error: {retry_state.outcome.exception()}"),

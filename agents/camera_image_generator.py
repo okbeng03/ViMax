@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 from tenacity import retry, stop_after_attempt
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.output_parsers import PydanticOutputParser
+from utils.completion_logger import log_agent
 from scenedetect import open_video, SceneManager, split_video_ffmpeg
 from scenedetect.detectors import ContentDetector
 
@@ -154,6 +155,7 @@ class CameraImageGenerator:
         self.video_generator = video_generator
 
 
+    @log_agent("CameraImageGenerator")
     async def construct_camera_tree(
         self,
         cameras: List[Camera],

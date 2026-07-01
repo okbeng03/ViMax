@@ -1,7 +1,8 @@
 import logging
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import PydanticOutputParser
-from langchain.chat_models import init_chat_model
+from utils.provider_presets import create_chat_model
+from utils.completion_logger import log_agent
 from pydantic import BaseModel, Field
 from typing import List, Optional, Literal
 from tenacity import retry
@@ -334,13 +335,14 @@ class ScriptPlanner:
         api_key: str,
         model_provider: str = "openai",
     ):
-        self.chat_model = init_chat_model(
+        self.chat_model = create_chat_model(
             model=chat_model,
             model_provider=model_provider,
             base_url=base_url,
             api_key=api_key,
         )
 
+    @log_agent("ScriptPlanner")
     @retry
     def plan_script(
         self,

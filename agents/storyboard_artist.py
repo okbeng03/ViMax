@@ -10,6 +10,7 @@ from interfaces import CharacterInScene, ShotDescription, ShotBriefDescription, 
 from agents.environment_agent import EnvironmentDesign
 
 from utils.retry import after_func
+from utils.completion_logger import log_agent
 
 system_prompt_template_design_storyboard = \
 """
@@ -1172,6 +1173,7 @@ class StoryboardArtist:
         return storyboard
 
 
+    @log_agent("StoryboardArtist")
     @retry(stop=stop_after_attempt(3), after=after_func)
     async def decompose_visual_description(
         self,
