@@ -830,6 +830,8 @@ If style is:
 ==================================================
 [OUTPUT]
 {format_instructions}
+
+**Ensure all output values (except keys) match the language used in the script**.
 """
 
 # [角色]
