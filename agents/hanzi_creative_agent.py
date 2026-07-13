@@ -159,13 +159,7 @@ class HanziCreativeAgent:
         Returns:
             故事脚本大纲
         """
-        
-        prompt_template = ChatPromptTemplate.from_messages([
-            ('system', system_prompt_template_generate_hanzi_creative),
-            ('human', human_prompt_template_generate_hanzi_creative),
-        ])
-        
-        chain = prompt_template | self.chat_model
+
         definitions = ""
         
         for definition in basic_definitions:
@@ -173,15 +167,14 @@ class HanziCreativeAgent:
             
             for explanation in definition['explanations']:
                 definitions += f"  - {explanation}\n"
+
+        messages = [
+            SystemMessage(content=system_prompt_template_generate_hanzi_creative),
+            HumanMessage(content=human_prompt_template_generate_hanzi_creative.format(hanzi=hanzi, basic_definitions=definitions, glyph_types=", ".join(glyph_types)))
+        ]
         
         response = await asyncio.wait_for(
-            chain.ainvoke(
-                input={
-                    "hanzi": hanzi,
-                    "basic_definitions": definitions,
-                    "glyph_types": ", ".join(glyph_types),
-                }
-            ),
+            self.chat_model.ainvoke(messages),
             timeout=retry_timeout,
         )
         
