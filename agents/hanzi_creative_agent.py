@@ -4,6 +4,7 @@ from tenacity import retry, stop_after_attempt
 
 from langchain.chat_models.base import BaseChatModel
 from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.messages import HumanMessage, SystemMessage
 
 from utils.retry import after_func
 from utils.completion_logger import log_agent
