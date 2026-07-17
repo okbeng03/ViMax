@@ -267,24 +267,24 @@ class Script2VideoPipeline:
                 return
 
             # 基于首尾帧生成镜头视频
-            if self.comfyui_enable:
-                video_tasks = [
-                    self.generate_video_for_single_shot(
-                        shot_description=shot_description,
-                        characters=characters,
-                    )
-                    for shot_description in shot_descriptions
-                ]
-                await asyncio.gather(*video_tasks)
+            video_tasks = [
+                self.generate_video_for_single_shot(
+                    shot_description=shot_description,
+                    characters=characters,
+                )
+                for shot_description in shot_descriptions
+            ]
+            await asyncio.gather(*video_tasks)
 
             if self.check_interrupt("shot_video"):
                 return
 
             # latent continuity transition
-            shot_transitions = await self.generate_shot_transitions(
-                shot_descriptions=shot_descriptions,
-                style=style,
-            )
+            # shot_transitions = await self.generate_shot_transitions(
+            #     shot_descriptions=shot_descriptions,
+            #     style=style,
+            # )
+            shot_transitions = []
 
             if self.check_interrupt("shot_transition"):
                 return
@@ -557,6 +557,9 @@ class Script2VideoPipeline:
             # final_prompt = shot_description_with_dialogues.prompt
             dialogue_audio_path = None
 
+            if not self.comfyui_enable:
+                return
+
             if self.is_ltx_model:
                 final_prompt = shot_description_with_dialogues.prompt
                 print(f"📝 LTX Prompt: {final_prompt[:100]}...")
@@ -670,16 +673,18 @@ class Script2VideoPipeline:
                     new_camera_image_path = await self.generate_environment_image(new_camera, style)
                     available_image_path_and_text_pairs.append((new_camera_image_path, f"{new_camera.lens_type}，{new_camera.composition_style}，{new_camera.visible_environment_area}"))
 
-            frame_image: ImageOutput = await self.generate_image_for_single_shot(
+            frame_image = await self.generate_image_for_single_shot(
                 shot_idx=shot_idx,
                 frame_type=frame_type,
                 frame_desc=frame_desc,
                 available_image_path_and_text_pairs=available_image_path_and_text_pairs,
                 style=style
             )
-            frame_image.save(frame_image_path)
-            print(f"☑️ Generated {frame_type} frame for shot {shot_idx}, saved to {frame_image_path}.")
 
+            if frame_image:
+                frame_image.save(frame_image_path)
+                print(f"☑️ Generated {frame_type} frame for shot {shot_idx}, saved to {frame_image_path}.")
+        
         self.frame_events[shot_idx][frame_type].set()
         return frame_image_path
 
@@ -931,17 +936,15 @@ class Script2VideoPipeline:
         if os.path.exists(master_image_path):
             print(f"🚀 Loaded existing master environment image.")
         else:
-            if not self.comfyui_enable:
-                return {}
-
-            master_prompt = f"style: {style}\n{environment_design.master_prompt}" if style else environment_design.master_prompt
-            print(f"🎬 Generating master environment image...")
-            master_image: ImageOutput = await self.image_generator.generate_single_image(
-                prompt=master_prompt,
-                size="2560x1440",
-            )
-            master_image.save(master_image_path)
-            print(f"✅ Master environment image saved to {master_image_path}.")
+            if self.comfyui_enable:
+                master_prompt = f"style: {style}\n{environment_design.master_prompt}" if style else environment_design.master_prompt
+                print(f"🎬 Generating master environment image...")
+                master_image: ImageOutput = await self.image_generator.generate_single_image(
+                    prompt=master_prompt,
+                    size="2560x1440",
+                )
+                master_image.save(master_image_path)
+                print(f"✅ Master environment image saved to {master_image_path}.")
 
         # 2. 基于母图生成各机位图
         camera_image_map: Dict[str, str] = {}
@@ -981,7 +984,7 @@ class Script2VideoPipeline:
             print(f"🚀 Loaded existing camera image for {camera_coverage.camera_id}.")
         else:
             if not self.comfyui_enable:
-                return ""
+                return cam_image_path
 
             # edit_prompt = f"style: {style}\n{camera_coverage.qwen_edit_camera_prompt}" if style else camera_coverage.qwen_edit_camera_prompt
             print(f"📷 Generating camera image for {camera_coverage.camera_id} ({camera_coverage.camera_name})...")
@@ -1037,14 +1040,17 @@ class Script2VideoPipeline:
         shot_brief_descriptions: List[ShotBriefDescription],
         characters: List[CharacterInScene],
     ):
-        tasks = [
-            self.decompose_visual_description_for_single_shot_brief_description(
-                shot_brief_description,
-                characters
-            )
-            for shot_brief_description in shot_brief_descriptions
-        ]
+        # 限制 LLM 并发避免 429 Too Many Requests
+        semaphore = asyncio.Semaphore(3)
 
+        async def _limited(sbd: ShotBriefDescription):
+            async with semaphore:
+                await asyncio.sleep(0.5)  # 错开请求间隔
+                return await self.decompose_visual_description_for_single_shot_brief_description(
+                    sbd, characters
+                )
+
+        tasks = [_limited(sbd) for sbd in shot_brief_descriptions]
         shot_descriptions = await asyncio.gather(*tasks)
         return shot_descriptions
 

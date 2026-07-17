@@ -32,6 +32,7 @@ class Idea2VideoPipeline:
         new_character: List[str] = None,
         relate_hanzi: List[str] = None,
         gacha_config: dict = None,
+        config: dict = None,
     ):
         self.chat_model = chat_model
         self.image_generator = image_generator
@@ -46,6 +47,7 @@ class Idea2VideoPipeline:
         self.relate_hanzi = relate_hanzi
         self.gacha_config = gacha_config
         self.comfyui_enable = False
+        self.config = config
         os.makedirs(self.working_dir, exist_ok=True)
 
         self.screenwriter = Screenwriter(chat_model=self.chat_model)
@@ -81,6 +83,7 @@ class Idea2VideoPipeline:
             new_character=config.get("new_character", "").split(",") if config.get("new_character") else None,
             relate_hanzi=config.get("relate_hanzi", "").split(",") if config.get("relate_hanzi") else None,
             gacha_config=config["gacha_config"],
+            config=config,
         )
 
     async def _check_comfyui_health(self):
@@ -147,8 +150,9 @@ class Idea2VideoPipeline:
                 if "字" in character.identifier_in_scene:
                     continue
 
-                voice = await self.voice_designer.design_and_register(character, self.audio_generator)
-                register_voice(name=voice["character"], gender=voice["gender"])
+                if self.comfyui_enable:
+                    voice = await self.voice_designer.design_and_register(character, self.audio_generator)
+                    register_voice(name=voice["character"], gender=voice["gender"])
 
         return characters
 
@@ -167,9 +171,6 @@ class Idea2VideoPipeline:
             else:
                 character_portraits_registry = {}
 
-        if not self.comfyui_enable:
-            return character_portraits_registry
-
         # 为每个角色生成肖像图片
         tasks = [
             self.generate_portraits_for_single_character(character, style)
@@ -179,9 +180,11 @@ class Idea2VideoPipeline:
         if tasks:
             for future in asyncio.as_completed(tasks):
                 character_portraits_registry.update(await future)
-                with open(character_portraits_registry_path, 'w', encoding='utf-8') as f:
-                    json.dump(character_portraits_registry,
-                              f, ensure_ascii=False, indent=4)
+
+                if self.comfyui_enable:
+                    with open(character_portraits_registry_path, 'w', encoding='utf-8') as f:
+                        json.dump(character_portraits_registry,
+                                f, ensure_ascii=False, indent=4)
 
             print(
                 f"✅ Completed character portrait generation for {len(characters)} characters.")
@@ -195,6 +198,7 @@ class Idea2VideoPipeline:
         self,
         idea: str,
         user_requirement: str,
+        hanzi_story: Optional[str] = None,
     ):
         save_path = os.path.join(self.working_dir, "story.txt")
         if os.path.exists(save_path):
@@ -203,7 +207,7 @@ class Idea2VideoPipeline:
             print(f"🚀 Loaded story from existing file.")
         else:
             print("🧠 Developing story...")
-            story = await self.screenwriter.develop_story(idea=idea, user_requirement=user_requirement)
+            story = await self.screenwriter.develop_story(idea=idea, user_requirement=user_requirement, hanzi_story=hanzi_story)
             with open(save_path, "w", encoding="utf-8") as f:
                 f.write(story)
             print(f"✅ Developed story and saved to {save_path}.")
@@ -241,22 +245,25 @@ class Idea2VideoPipeline:
         if os.path.exists(front_portrait_path):
             pass
         else:
-            front_portrait_output = await self.character_portraits_generator.generate_front_portrait(character, style)
-            front_portrait_output.save(front_portrait_path)
+            if self.comfyui_enable:
+                front_portrait_output = await self.character_portraits_generator.generate_front_portrait(character, style)
+                front_portrait_output.save(front_portrait_path)
 
         side_portrait_path = os.path.join(character_dir, "side.png")
         if os.path.exists(side_portrait_path):
             pass
         else:
-            side_portrait_output = await self.character_portraits_generator.generate_side_portrait(character, front_portrait_path)
-            side_portrait_output.save(side_portrait_path)
+            if self.comfyui_enable:
+                side_portrait_output = await self.character_portraits_generator.generate_side_portrait(character, front_portrait_path)
+                side_portrait_output.save(side_portrait_path)
 
         back_portrait_path = os.path.join(character_dir, "back.png")
         if os.path.exists(back_portrait_path):
             pass
         else:
-            back_portrait_output = await self.character_portraits_generator.generate_back_portrait(character, front_portrait_path)
-            back_portrait_output.save(back_portrait_path)
+            if self.comfyui_enable:
+                back_portrait_output = await self.character_portraits_generator.generate_back_portrait(character, front_portrait_path)
+                back_portrait_output.save(back_portrait_path)
 
         print(
             f"☑️ Completed character portrait generation for {character.identifier_in_scene}.")
@@ -502,6 +509,7 @@ class Idea2VideoPipeline:
                 relate_hanzi=self.relate_hanzi,
                 interrupt_step=self.interrupt_step,
                 comfyui_enable=self.comfyui_enable,
+                disable_transition=self.config.get("disable_transition", False)
             )
             hanzi_video_path = await hanzi_pipeline()
             
@@ -518,7 +526,10 @@ class Idea2VideoPipeline:
             return
 
         # 生成故事
-        story = await self.develop_story(idea="### 序幕\n" + idea + "\n\n" + hanzi_idea if hanzi_idea else idea, user_requirement=user_requirement)
+        if idea == "汉字教学":
+            story = await self.develop_story(idea=hanzi_idea, user_requirement=user_requirement)
+        else:   
+            story = await self.develop_story(idea=idea, user_requirement=user_requirement, hanzi_story=hanzi_idea)
         
         if self.check_interrupt("story"):
             return
@@ -598,14 +609,15 @@ class Idea2VideoPipeline:
                 all_video_paths.append(final_video_path)
                 print(f"☑️ Completed scene {idx} video generation, saved to {final_video_path}.")
 
-            if self.interrupt_step is not None and self.interrupt_step != "scene_transition":
+            if self.interrupt_step is not None and self.interrupt_step not in ["scene_transition", "final"]:
                 return
 
             # latent continuity transition
-            scene_transitions = await self.generate_scene_transitions(
-                scene_scripts=scene_scripts,
-                style=style,
-            )
+            # scene_transitions = await self.generate_scene_transitions(
+            #     scene_scripts=scene_scripts,
+            #     style=style,
+            # )
+            scene_transitions = []
             
             if self.check_interrupt("scene_transition"):
                 return

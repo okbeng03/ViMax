@@ -66,6 +66,7 @@ class HanziPipeline:
         relate_hanzi: List[str] | None = None,
         interrupt_step: str | None = None,
         comfyui_enable: bool = True,
+        disable_transition: bool = False,
     ):
         self.chat_model: BaseChatModel = chat_model
         self.image_generator: Any = image_generator
@@ -76,6 +77,7 @@ class HanziPipeline:
         self.relate_hanzi: List[str] | None = relate_hanzi
         self.interrupt_step: str | None = interrupt_step
         self.comfyui_enable: bool = comfyui_enable
+        self.disable_transition = disable_transition
         
         os.makedirs(self.working_dir, exist_ok=True)
         self.temp_dir = os.path.join(self.working_dir, "temp")
@@ -105,6 +107,7 @@ class HanziPipeline:
             working_dir=config.get("working_dir", f"./output/hanzi_{hanzi}"),
             hanzi=hanzi,
             interrupt_step=config.get("interrupt_step"),
+            disable_transition=config.get("disable_transition", False),
         )
 
     def check_interrupt(self, step_name: str) -> bool:
@@ -1359,6 +1362,7 @@ class HanziPipeline:
                         concat_parts.extend([
                             "-i", silence_2s,
                         ])
+                        total_duration += 2
                         
             concat_parts.extend([
                 "-i", silence_1s
@@ -1438,27 +1442,27 @@ class HanziPipeline:
             # 使用 fade 滤镜实现过渡效果
             all_py = "[bg_with_hanzi]"
             for idx, (pinyin, (start_time, end_time)) in enumerate(zip(pinyins, pinyin_times)):
-                fade_duration = 2.0
-                fade_start = end_time - fade_duration
+                # fade_duration = 2.0
+                # fade_start = end_time - fade_duration
                 
                 # 构建此拼音的显示逻辑：fade in 开始，solid 中间，fade out 结束
                 filter_parts.append(
                     f"{all_py}drawtext=text='{pinyin}':fontsize={font_size}:fontcolor=white:"
                     f"x={x_center}:y={pinyin_y}:enable='between(t\\,{start_time}\\,{end_time})'"
-                    f"[tmp_{idx}]"
+                    f"[py_{idx}]"
                 )
                 
-                # 添加 fade 效果
-                if idx == 0:
-                    # 第一个：fade in
-                    filter_parts.append(f"[tmp_{idx}]fade=t=in:st={start_time}:d={fade_duration}[py_{idx}]")
-                elif idx == num_pinyins - 1:
-                    # 最后一个：fade out
-                    filter_parts.append(f"[tmp_{idx}]fade=t=out:st={fade_start}:d={fade_duration}[py_{idx}]")
-                else:
-                    # 中间的：fade in + fade out
-                    filter_parts.append(f"[tmp_{idx}]fade=t=in:st={start_time}:d={fade_duration/2}[py_{idx}_in]")
-                    filter_parts.append(f"[py_{idx}_in]fade=t=out:st={fade_start}:d={fade_duration}[py_{idx}]")
+                # # 添加 fade 效果
+                # if idx == 0:
+                #     # 第一个：fade in
+                #     filter_parts.append(f"[tmp_{idx}]fade=t=in:st={start_time}:d={fade_duration}[py_{idx}]")
+                # elif idx == num_pinyins - 1:
+                #     # 最后一个：fade out
+                #     filter_parts.append(f"[tmp_{idx}]fade=t=out:st={fade_start}:d={fade_duration}[py_{idx}]")
+                # else:
+                #     # 中间的：fade in + fade out
+                #     filter_parts.append(f"[tmp_{idx}]fade=t=in:st={start_time}:d={fade_duration/2}[py_{idx}_in]")
+                #     filter_parts.append(f"[py_{idx}_in]fade=t=out:st={fade_start}:d={fade_duration}[py_{idx}]")
                 
                 all_py = f"[py_{idx}]"
             
@@ -1854,7 +1858,10 @@ class HanziPipeline:
         stroke_video_path = await self.generate_stroke_video()
 
         # Step 6: 生成演变动画
-        transition_video_path = await self.generate_evolution_video(glyph_png_paths)
+        if self.disable_transition:
+            transition_video_path = ""
+        else:
+            transition_video_path = await self.generate_evolution_video(glyph_png_paths)
 
         if self.check_interrupt("transition"):
             return ""
