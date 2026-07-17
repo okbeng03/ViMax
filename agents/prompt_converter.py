@@ -81,7 +81,7 @@ system_prompt_template_convert_dialogue = \
 - 确保句子之间的逻辑流畅
 - **计算对话时长**：按对话语速 4.5 字/秒 （含自然停顿）来计算
 - 如果有多个对话，对话之间需有停顿，建议间隔0.5秒
-- **text_prompt 只描述角色的可视特征**
+- **prompt 只描述角色的可视特征**
     如：
     - 镜头是从小豆丁背后拍摄的。那么就不要描述其脸部、表情等
     - 镜头是拍摄人物在书桌写字。那么其下半身、腿部不可见，就不要描述其腿部、裤子、鞋子等特征
@@ -186,7 +186,7 @@ class PromptConverter:
         """
         self.chat_model = create_chat_model(
             model_provider="qwen",
-            model="deepseek-v4-flash",
+            model="kimi-k2.6",
         )
 
     @log_agent("PromptConverter")
