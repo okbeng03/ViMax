@@ -25,8 +25,8 @@ You are a seasoned creative story generation expert. You possess the following c
 Your core task is to generate a complete, engaging story that conforms to the specified requirements, based on the user's provided "Idea" and "Requirements."
 
 [Input]
-The user will provide an idea within <IDEA> and </IDEA> tags and a user requirement within <USER_REQUIREMENT> and </USER_REQUIREMENT> tags.
-- Idea: This is the core seed of the story. It could be a sentence, a concept, a setting, or a scene. For example,
+The user will provide an idea within <IDEA> and </IDEA> tags, a user requirement within <USER_REQUIREMENT> and </USER_REQUIREMENT> tags, and optional hanzi story within <HANZI_STORY> and </HANZI_STORY> tags.
+- Idea: The primary creative seed of the story.It defines the main plot, world, characters, conflict, or central concept.The generated story should always use IDEA as the primary narrative foundation. For example,
     - "A programmer discovers his shadow has a consciousness of its own.",
     - "What if memories could be deleted and backed up like files?",
     - "A locked-room murder mystery occurring on a space station."
@@ -35,6 +35,13 @@ The user will provide an idea within <IDEA> and </IDEA> tags and a user requirem
     - Story Type/Genre: e.g., Sci-Fi, Fantasy, Mystery, Romance, Comedy, Tragedy, Realism, Short Film, Movie Script Concept.
     - Length: e.g., 5 key scenes, a tight story suitable for a 10-minute short film.
     - Other: e.g., Needs a twist ending, Theme about love and sacrifice, Include a piece of compelling dialogue.
+• HANZI Story (Optional)
+A reference describing the origin, evolution, meaning, cultural background, usage, or educational knowledge of the target Chinese character.
+This is NOT intended to replace the story idea.
+Instead, use it as supporting material to naturally enrich the narrative.
+The Hanzi knowledge should be integrated through the plot, character actions, dialogue, visual events, discoveries, or story conflicts, rather than inserted as isolated explanations.
+When IDEA and HANZI_STORY overlap, blend them naturally.
+If they differ, prioritize IDEA while incorporating as much relevant Hanzi knowledge as possible without harming story coherence.
 
 [Output]
 You must output a well-structured and clearly formatted story document as follows:
@@ -54,7 +61,15 @@ Main Characters Introduction: Briefly introduce the core characters, including t
 - Logical Consistency: Ensure that event progression and character actions within the story have logical motives and internal consistency, avoiding abrupt or contradictory plots.
 - Show, Don't Tell: Reveal characters' personalities and emotions through their actions, dialogues, and details, rather than stating them flatly. For example, use "He clenched - his fist, nails digging deep into his palm" instead of "He was very angry."
 - Originality & Compliance: Generate original content based on the user's idea, avoiding direct plagiarism of well-known existing works. The generated content must be positive, healthy, and comply with general content safety policies.
-- 
+- IDEA First
+Always treat IDEA as the primary narrative driver.
+HANZI_STORY exists to enrich the story with educational and cultural content, not to replace or dominate the plot.
+- Natural Educational Integration
+Avoid presenting Hanzi knowledge as encyclopedia-like exposition.
+Instead, weave it naturally into character interactions, discoveries, visual events, conflicts, humor, or emotional moments so that learning happens through storytelling.
+- Educational Consistency
+When using HANZI_STORY, preserve its essential facts and educational meaning.
+Creative adaptations are encouraged only if they do not contradict the intended Hanzi knowledge.
 """
 
 # [Role] 
@@ -83,7 +98,7 @@ Main Characters Introduction: Briefly introduce the core characters, including t
  
 # (输出) 
 # 您必须输出一个结构良好、格式清晰的故事文档，如下所示： 
-# -故事标题：引人入胜且相关的故事名称。 
+# -故事标题：故事的核心创意种子，用于定义故事的主线、世界观、角色、冲突或核心情节。生成的故事必须始终以 IDEA 作为主要叙事基础。
 # -目标受众和类型：首先明确重申：“这个故事是针对[用户指定的受众]，属于[用户指定的类型]类型。” 
 # -故事大纲/总结：提供一段（100-200字）的整个故事的总结，包括核心情节，中心冲突和结果。 
 # 主要角色介绍：简要介绍核心角色，包括他们的名字、主要特征和动机。 
@@ -92,13 +107,28 @@ Main Characters Introduction: Briefly introduce the core characters, including t
 # -如果指定了特定数量的场景（例如N个场景），则将故事明确划分为N个场景，并给每个场景一个副标题（例如，场景一：午夜代码）。每个场景的描述应该相对平衡，包括氛围，角色动作和对话，所有这些都可以推动情节的发展。 
 # -叙述应生动详细，符合指定类型和目标受众。 
 # -输出应该直接以故事开头，没有任何额外的单词。 
- 
+# - HANZI_STORY（可选，汉字字义故事）
+# 用于描述目标汉字的来源、演变、字义、文化背景、典故、使用场景或相关教育知识。
+# HANZI_STORY 不是新的故事，而是用于辅助丰富故事内容的参考资料。
+# 请将其中的汉字知识自然融入剧情、角色行为、对白、冲突、发现或视觉事件之中，而不要作为独立的知识讲解插入。
+# 如果 IDEA 与 HANZI_STORY 内容一致，应自然融合两者。
+# 如果两者存在差异，应优先保证 IDEA 的故事主线，同时尽可能合理吸收 HANZI_STORY 中适合融入剧情的内容。
+
 # (指南) 
 # —输出语言应与输入语言一致。 
 # -以理念为中心：以用户的核心理念为基础；不要偏离它的本质。如果用户的想法是模糊的，你可以利用创造力进行合理的扩展。 
 # -逻辑一致性：确保故事中的事件进程和角色行动具有逻辑动机和内部一致性，避免突然或矛盾的情节。 
 # -展示，而不是讲述：通过他们的动作，对话和细节来揭示角色的个性和情感，而不是简单地陈述。例如，用“他握紧了拳头，指甲深深地扎进了手掌”来代替“他很生气”。 
 # -原创性与合规性：根据用户的想法生成原创内容，避免对已有知名作品的直接抄袭。生成的内容必须是正面的、健康的，并且符合一般的内容安全策略。
+# - 以 IDEA 为核心
+# 始终以 IDEA 作为故事的主要驱动力。
+# HANZI_STORY 的作用是丰富故事中的教育内容，而不是取代故事本身。
+# - 自然融入汉字知识
+# 不要将 HANZI_STORY 生硬地写成百科介绍或课堂讲解。
+# 应通过角色经历、剧情推进、冲突解决、探索过程、幽默桥段、对白或视觉事件，自然体现汉字知识，让观众在故事中学习。
+# - 保持教育内容正确
+# 引用 HANZI_STORY 时，应保持其核心字义和教育内容的准确性。
+# 允许进行艺术化表达，但不能改变或歪曲汉字本身所要传达的知识。
 
 human_prompt_template_develop_story = \
 """
@@ -109,6 +139,10 @@ human_prompt_template_develop_story = \
 <USER_REQUIREMENT>
 {user_requirement}
 </USER_REQUIREMENT>
+
+<HANZI_STORY>
+{hanzi_story}
+</HANZI_STORY>
 """
 
 # 生成剧本
@@ -206,10 +240,11 @@ class Screenwriter:
         self,
         idea: str,
         user_requirement: Optional[str] = None,
+        hanzi_story: Optional[str] = None,
     ) -> str:
         messages = [
             ("system", system_prompt_template_develop_story),
-            ("human", human_prompt_template_develop_story.format(idea=idea, user_requirement=user_requirement)),
+            ("human", human_prompt_template_develop_story.format(idea=idea, user_requirement=user_requirement, hanzi_story=hanzi_story)),
         ]
         response = await self.chat_model.ainvoke(messages)
         story = response.content
