@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain.chat_models.base import BaseChatModel
+from utils.provider_presets import create_chat_model
 from utils.completion_logger import log_agent
 
 from utils.retry import after_func
@@ -1549,7 +1550,10 @@ class EnvironmentDesigner:
         self,
         chat_model: BaseChatModel,
     ):
-        self.chat_model = chat_model
+        self.chat_model = create_chat_model(
+            model_provider="qwen",
+            model="qwen3.7-plus-2026-05-26",
+        )
 
     @log_agent("EnvironmentDesigner")
     @retry(stop=stop_after_attempt(3), after=after_func)
