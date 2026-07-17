@@ -78,6 +78,10 @@ class ShotBriefDescription(BaseModel):
     visual_desc: str = Field(
         description='''A vivid and detailed visual description of the shot that convey rich visual information through text. The character identifiers in the description must match those in the character list and be enclosed in angle brackets (e.g., <Alice>, <Bob>). All visible characters should be described.
         If there is a conversation, please write down the content of the conversation), when you meet some dialogue, you should write into the visual content description with :" " symbols and the character's features (eg. <SLING> (male, late 20s, Texan accent softened by military precision, confident and energetic.) says: "Gear retracted. Flaps transitioning. Flight path stable. You are clear to climb."). 
+        **只描述角色的可视特征**
+        如：
+        - 镜头是从小豆丁背后拍摄的。那么就不要描述其脸部、表情等
+        - 镜头是拍摄人物在书桌写字。那么其下半身、腿部不可见，就不要描述其腿部、裤子、鞋子等特征
         ''',
         examples=[
             "An over-the-shoulder shot at eye level, positioned behind <Alice>. The foreground, including <Alice>'s shoulder and head, is softly blurred, directing focus onto <Bob>'s face. <Bob>'s subtle reactions—shifting from surprise to delight—are clearly visible. The supermarket background is gently blurred with cool fluorescent lighting.",
@@ -87,10 +91,11 @@ class ShotBriefDescription(BaseModel):
 
     # audio
     audio_desc: str = Field(
-        description="A detailed description of the audio in the shot.",
+        description="A detailed description of the audio in the shot.Speaker is more important",
         examples=[
             "[Sound Effect] Ambient sound (supermarket background noise, shopping cart wheels rolling)",
             "[Speaker] Alice (Happy): Hello, how are you?",
+            "[Speaker] Alice (Happy): Hello, how are you?[Sound Effect] Ambient sound ",
             None,
         ],
     )
