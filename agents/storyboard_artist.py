@@ -405,6 +405,10 @@ The storyboard style must match:
 - **Location consistency**: Ensure the generated shot locations match the script's setting. Do not introduce indoor elements (e.g., desks, bookshelves) when the scene takes place outdoors, and vice versa. The background elements must strictly adhere to the script's described environment.
 - Time consistency: Unless otherwise specified, keep the lens time matching the script Settings to ensure light consistency. If it is outdoors at night, the deep blue night sky spreads out, and the ambient light is soft and quiet. It must be consistent and not be missing, resulting in daytime light.
 - If a character not in the character list appears in the shot, describe in detail their static features (such as facial features and body shape) and dynamic features (such as clothing and accessories) according to the scene.
+- **visual_desc value只描述角色的可视特征**
+    如：
+    - 镜头是从小豆丁背后拍摄的。那么就不要描述其脸部、表情等
+    - 镜头是拍摄人物在书桌写字。那么其下半身、腿部不可见，就不要描述其腿部、裤子、鞋子等特征
 """
 
 # [Role] 
@@ -887,6 +891,10 @@ The final duration must allow:
 - Use as few camera positions as possible.
 - In the first frame, last frame, and motion descriptions, all visual details must remain physically and visually plausible. Do not describe details that are not actually visible in the frame due to occlusion, framing, distance, lighting, or being outside the camera view. 
 For example, if a character is leaning over a desk and only the upper body is visible, do not describe lower-body clothing or shoes that cannot be seen.
+- **ff_desc、lf_desc、motion_desc value只描述角色的可视特征**
+    如：
+    - 镜头是从小豆丁背后拍摄的。那么就不要描述其脸部、表情等
+    - 镜头是拍摄人物在书桌写字。那么其下半身、腿部不可见，就不要描述其腿部、裤子、鞋子等特征
 """
 
 # [Role] 
