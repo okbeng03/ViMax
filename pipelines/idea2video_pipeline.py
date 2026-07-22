@@ -130,6 +130,7 @@ class Idea2VideoPipeline:
                     if character.identifier_in_scene in lack_characters:
                         character.idx = new_idx
                         characters.append(character)
+                        new_idx += 1
             else:
                 characters = characters_response
             
