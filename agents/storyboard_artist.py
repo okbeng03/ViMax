@@ -1078,7 +1078,7 @@ class StoryboardArtist:
         characters: List[CharacterInScene],
         environment: EnvironmentDesign,
         user_requirement: Optional[str] = None,
-        retry_timeout: int = 150,
+        retry_timeout: int = 300,
     ) -> List[ShotBriefDescription]:
 
         class StoryboardResponse(BaseModel):
@@ -1187,7 +1187,7 @@ class StoryboardArtist:
         self,
         shot_brief_desc: ShotBriefDescription,
         characters: List[CharacterInScene],
-        retry_timeout: int = 150,
+        retry_timeout: int = 300,
     ) -> ShotDescription:
         parser = PydanticOutputParser(pydantic_object=VisDescDecompositionResponse)
         prompt_template = ChatPromptTemplate.from_messages(
