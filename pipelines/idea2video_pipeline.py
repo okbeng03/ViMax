@@ -148,7 +148,7 @@ class Idea2VideoPipeline:
         for character in characters:
             if character.identifier_in_scene not in voice_list:
                 # 如果 identifier_in_scene 包含 “字” 字符，则跳过
-                if "字" in character.identifier_in_scene:
+                if "字" in character.identifier_in_scene and len(character.identifier_in_scene) == 2:
                     continue
 
                 if self.comfyui_enable:
@@ -585,7 +585,7 @@ class Idea2VideoPipeline:
         else:
             # 生成场景视频，拆解成镜头再合成
             for idx, scene_script in enumerate(scene_scripts):
-                # if idx != 7:
+                # if idx == 4:
                 #     continue
 
                 scene_working_dir = os.path.join(self.working_dir, f"scene_{idx}")
