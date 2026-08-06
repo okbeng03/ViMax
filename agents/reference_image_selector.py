@@ -139,6 +139,7 @@ Do NOT:
 - The images from prior frames are arranged in chronological order. Give higher priority to more recent images (those closer to the end of the sequence).
 - Choose reference image descriptions that are as concise as possible and avoid including duplicate information. For example, if Image 3 depicts the facial features of Bob from the front, and Image 1 also depicts Bob's facial features from the front-view portrait, then Image 1 is redundant and should not be selected.
 - When a new character appears in the frame description, prioritize selecting their portrait image description (if available) to ensure accurate depiction of their appearance. Pay attention to whether the character is facing the camera from the front, side, or back. Choose the most suitable view as the reference image for the character.
+- **如果角色不在 reference image descriptions，那不能使用相关 portrait image description，保留 <FRAME_DESC> 里的角色描述**
 - For character portraits, you can only select at most one image from multiple views (front, side, back). Choose the most appropriate one based on the frame description. For example, when depicting a character from the side, choose the side view of the character.
 - Note: The focus of the lens should be on the upper or lower body area. Do not abruptly present a truncated body, which is half of the meaning of the lens. Maintain a three-dimensional proportion. Avoid presenting a body that is cut off at the waist or legs.
 - Select at most **8** optimal reference image descriptions.
@@ -358,7 +359,7 @@ class ReferenceImageSelector:
     ):
         self.chat_model = create_chat_model(
             model_provider="qwen",
-            model="deepseek-v4-flash",
+            model="deepseek-v4-flash-0731",
         )
 
     @log_agent("ReferenceImageSelector")
