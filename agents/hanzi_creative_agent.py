@@ -146,7 +146,7 @@ class HanziCreativeAgent:
         hanzi: str,
         basic_definitions: list[dict],
         glyph_types: List[str],
-        retry_timeout: int = 150,
+        retry_timeout: int = 500,
     ) -> str:
         """
         为汉字生成演变教程创意

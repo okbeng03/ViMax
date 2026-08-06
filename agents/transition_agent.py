@@ -58,6 +58,8 @@ The bridge shot must complete:
 The bridge shot should feel like:
 a real shot that naturally exists inside a movie.
 
+Ensure all output values (except keys) match the language of the input.
+
 ==================================================
 [CORE OBJECTIVE]
 
@@ -586,7 +588,7 @@ class TransitionDirector:
     ):
         self.chat_model = create_chat_model(
             model_provider="qwen",
-            model="deepseek-v4-flash",
+            model="deepseek-v4-flash-0731",
         )
 
     @log_agent("TransitionDirector")
@@ -598,7 +600,7 @@ class TransitionDirector:
         previous_last_frame: str = "",
         next_first_frame: str = "",
         environment_style: str = "",
-        retry_timeout: int = 150,
+        retry_timeout: int = 500,
     ) -> TransFragment:
         """
         生成两个镜头之间的过渡

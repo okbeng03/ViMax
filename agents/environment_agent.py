@@ -1550,10 +1550,7 @@ class EnvironmentDesigner:
         self,
         chat_model: BaseChatModel,
     ):
-        self.chat_model = create_chat_model(
-            model_provider="qwen",
-            model="qwen3.7-plus-2026-05-26",
-        )
+        self.chat_model = chat_model
 
     @log_agent("EnvironmentDesigner")
     @retry(stop=stop_after_attempt(3), after=after_func)
@@ -1561,7 +1558,7 @@ class EnvironmentDesigner:
         self,
         scene_description: str,
         style: str = "",
-        retry_timeout: int = 150,
+        retry_timeout: int = 500,
     ) -> EnvironmentDesign:
         """
         根据场景描述设计环境
@@ -1600,7 +1597,7 @@ class EnvironmentDesigner:
         shot_description: str,
         new_camera_reason: str,
         style: str = "",
-        retry_timeout: int = 150,
+        retry_timeout: int = 500,
     ) -> CameraCoverage:
         """
         根据镜头描述设计新的覆盖环境

@@ -228,7 +228,7 @@ class VoiceDesigner:
     ):
         self.chat_model = create_chat_model(
             model_provider="qwen",
-            model="deepseek-v4-flash",
+            model="deepseek-v4-flash-0731",
         )
 
     # ---------- LLM：生成音色设计方案 ----------
@@ -238,7 +238,7 @@ class VoiceDesigner:
     async def design_voice_llm(
         self,
         character: CharacterInScene,
-        retry_timeout: int = 150,
+        retry_timeout: int = 500,
     ) -> VoiceDesign:
         """
         使用 LLM 生成角色音色设计方案
