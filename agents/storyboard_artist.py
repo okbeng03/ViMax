@@ -778,7 +778,8 @@ You are a professional visual text analyst, proficient in cinematic language and
 Your task is to dissect and rewrite a user-provided visual text description of a shot strictly and insightfully into three distinct parts:
 - First Frame Description: Describe the static image at the very beginning of the shot. Focus on compositional elements, initial character postures, environmental layout, lighting, color, and other static visual aspects.
 - Last Frame Description: Describe the static image at the very end of the shot. Similarly, focus on the static composition, but it must reflect the final state after changes caused by camera movement or internal element motion.
-- Motion Description: Describe all movements that occur between the first frame and the last frame. This includes camera movement (e.g., static, push-in, pull-out, pan, track, follow, tilt, etc.) and movement of elements within the shot (e.g., character movement, object displacement, changes in lighting, etc.). This is the most dynamic part of the entire description. For the movement and changes of a character, you cannot directly use the character's name to refer to them. Instead, you need to refer to the character by their external features, especially noticeable ones like clothing characteristics.
+- Motion Description: Describe all movements that occur between the first frame and the last frame. This includes camera movement (e.g., static, push-in, pull-out, pan, track, follow, tilt, etc.) and movement of elements within the shot (e.g., character movement, object displacement, changes in lighting, etc.). This is the most dynamic part of the entire description. 
+For the movement and changes of a character, you need to refer to the character by their external features, especially noticeable ones like clothing characteristics.
 
 [Character Consistency Rule - CRITICAL]
 The first frame and last frame MUST have at least ONE character in common. This is essential for video generation models to maintain character consistency.
@@ -876,8 +877,9 @@ The final duration must allow:
 [Guidelines]
 - Ensure all output values (except keys) match the language used in the script.
 - Ensure the first and last frame descriptions are pure "snapshots," containing no ongoing actions (e.g., "He is about to stand up" is unacceptable; it should be "He is sitting on the chair, leaning slightly forward").
+- In the first frame and last frame descriptions, you should use the original character names/identifiers and the characters' visible characteristics to refer to them. For example, "Alice is walking" is unacceptable; it should be "Alice (short hair, wearing a green dress) is walking"
 - In the motion description, you must clearly distinguish between camera movement and on-screen movement. Use professional cinematic terminology (e.g., dolly shot, pan, zoom, etc.) as precisely as possible to describe camera movement.
-- In the motion description, you cannot directly use character names to refer to characters; instead, you should use the characters' visible characteristics to refer to them. For example, "Alice is walking" is unacceptable; it should be "Alice (short hair, wearing a green dress) is walking".
+- In the motion description, refer to characters by their visible characteristics alongside their names. For example: "Alice (short hair, wearing a green dress) is walking".
 - The last frame description must be logically consistent with the first frame description and the motion description. All actions described in the motion section should be reflected in the static image of the last frame.
 - If the input description is ambiguous about certain details, you may make reasonable inferences and additions based on the context to make all three sections complete and fluent. However, core elements must strictly adhere to the input text.
 - Use accurate, concise, and professional descriptive language. Avoid overly literary rhetoric such as metaphors or emotional flourishes; focus on providing information that can be visualized.
@@ -1078,7 +1080,7 @@ class StoryboardArtist:
         characters: List[CharacterInScene],
         environment: EnvironmentDesign,
         user_requirement: Optional[str] = None,
-        retry_timeout: int = 300,
+        retry_timeout: int = 600,
     ) -> List[ShotBriefDescription]:
 
         class StoryboardResponse(BaseModel):
