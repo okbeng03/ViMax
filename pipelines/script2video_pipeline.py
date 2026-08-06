@@ -603,7 +603,7 @@ class Script2VideoPipeline:
                 use_xianxia_lora=shot_description_with_dialogues.use_xianxia_lora,
                 is_small_people=shot_description_with_dialogues.is_small_people,
             )
-            
+
             # 后续统一成 1680
             if shot_description_with_dialogues.is_small_people:
                 self._scale_video(video_output, video_path)
@@ -1347,7 +1347,7 @@ class Script2VideoPipeline:
         video_output.save(temp_video_path)
         subprocess.run([
             "ffmpeg", "-y", "-i", temp_video_path,
-            "-vf", "scale=1344:768:force_original_aspect_ratio=decrease,pad=1344:768:(ow-iw)/2:(oh-ih)/2",
+            "-vf", "scale=1690:960:force_original_aspect_ratio=decrease,pad=1690:960:(ow-iw)/2:(oh-ih)/2",
             "-c:v", "libx264", "-preset", "medium", "-crf", "23",
             video_path,
         ], check=True, capture_output=True)
