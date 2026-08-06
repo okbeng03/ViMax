@@ -527,6 +527,8 @@ class Idea2VideoPipeline:
             return
 
         # 生成故事
+        # 去掉首尾空格
+        idea = idea.strip()
         if idea == "汉字教学":
             story = await self.develop_story(idea=hanzi_idea, user_requirement=user_requirement)
         else:   
