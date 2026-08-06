@@ -48,7 +48,8 @@ You must output a well-structured and clearly formatted story document as follow
 - Story Title: An engaging and relevant story name.
 - Target Audience & Genre: Start by explicitly restating: "This story is targeted at [User-Specified Audience], in the [User-Specified Genre] genre."
 - Story Outline/Summary: Provide a one-paragraph (100-200 words) summary of the entire story, covering the core plot, central conflict, and outcome.
-Main Characters Introduction: Briefly introduce the core characters, including their names, key traits, and motivations. Don't introduce the items they might be carrying in their hands.
+- Main Characters Introduction: Briefly introduce the Major & Supporting Characters, including their names, key traits, and motivations. Don't introduce the items they might be carrying in their hands.
+    - 从 Idea 和 HANZI Story 里识别主要角色，对剧情发展有贡献的都是主要角色
 - Full Story Narrative:
     - If the number of scenes is unspecified, narrate the story naturally in paragraphs following the "Introduction - Development - Climax - Conclusion" structure.
     - If a specific number of scenes (e.g., N scenes) is specified, clearly divide the story into N scenes, giving each a subheading (e.g., Scene One: Code at Midnight). The description for each scene should be relatively balanced, including atmosphere, character actions, and dialogue, all working together to advance the plot.
