@@ -247,7 +247,7 @@ class HanziEvolutionAgent:
         self,
         hanzi: str,
         glyphs: List[dict],
-        retry_timeout: int = 150,
+        retry_timeout: int = 500,
     ) -> EvolutionTransitions:
         """
         为汉字相邻字形生成过渡描述
