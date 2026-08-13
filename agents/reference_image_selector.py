@@ -9,6 +9,7 @@ from utils.image import image_path_to_b64
 from utils.retry import after_func
 from utils.provider_presets import create_chat_model
 from utils.completion_logger import log_agent
+from configs.config import model_name
 
 system_prompt_template_select_reference_images_only_text = \
 """
@@ -78,6 +79,38 @@ The text_prompt should primarily describe:
 - cinematic blocking
 - composition relationships
 
+**[Character Reference Format]**
+When a character has a corresponding reference image, describe them in the following format:
+
+[通用性别/年龄指代词]<角色名>（角色具体描述，仅含当前镜头下可见的特征）
+
+Examples:
+- "一个小女孩阿紫（冲天揪发型，红色小马甲，黄色灯笼裤）站在画面左侧"
+- "一位老者字博士（白发白胡子，白大褂，圆框眼镜，学者帽）侧面朝向镜头"
+- "一个青年先民（古铜色肌肤，穿着兽皮裙）蹲在木桌旁"
+
+If the character does NOT have a reference image, describe their visible features in detail inline.
+
+**[Visible Feature Rule - CRITICAL]**
+只描述当前镜头下实际可见的角色特征：
+- 如镜头是从背后拍摄，不描述脸部、表情、前胸
+- 如角色在书桌后只露出上半身，不描述腿部、裤子、鞋子
+- 如角色被其他物体遮挡，不描述被遮挡部位
+- 如角色距离镜头很远，不描述面部细节
+
+**[Position Rule]**
+如能判断角色在画面中的位置，必须在描述中指明：
+- "站在画面左侧"
+- "蹲在画面右下角"
+- "位于画面中央偏右"
+- "画面近景右侧，只露出肩膀"
+
+**[Spatial Continuity Rule]**
+如果参考图中有首帧或其他帧已经确立了角色位置，则必须在当前帧描述中维持一致：
+- 如首帧是"小男孩坐在左侧，老人坐在右侧"，除非当前帧描述有明确变化说明，否则当前帧中男孩仍在左侧，老人仍在右侧
+- 如首帧是"阿紫站在画面左侧"，后续帧中阿紫不应跑到画面右侧，除非描述明确说明她移动了位置
+- 不可随意交换角色的左右位置，不可让角色在不同帧之间"瞬移"
+
 Only minimally reference environment elements name required for:
 - grounding characters spatially
 - supporting interactions
@@ -89,12 +122,7 @@ The environment itself must NOT be re-described.
 text_prompt 最后以参考图片引用描述结束，引用的 index 基于 ref_image_indices（而不是 SEQ_DESC indices）：
 
 如：
-"小豆丁人物特征、穿着参考 Image 0。\n字博士人物特征、穿着参考 Image 1。\n整体环境、背景参考 Image 2。"
-
-**text_prompt 只描述角色的可视特征**
-如：
-- 镜头是从小豆丁背后拍摄的。那么就不要描述其脸部、表情等
-- 镜头是拍摄人物在书桌写字。那么其下半身、腿部不可见，就不要描述其腿部、裤子、鞋子等特征
+"阿紫（小女孩）人物特征、穿着参考 Image 0。\n字博士（老年男性）人物特征、穿着参考 Image 1。\n整体环境、背景参考 Image 2。"
 
 [visual_desc RULES]
 
@@ -359,7 +387,7 @@ class ReferenceImageSelector:
     ):
         self.chat_model = create_chat_model(
             model_provider="qwen",
-            model="deepseek-v4-flash-0731",
+            model=model_name.get("tertiary", "deepseek-v4-flash-0731"),
         )
 
     @log_agent("ReferenceImageSelector")
