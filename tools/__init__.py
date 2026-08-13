@@ -19,6 +19,7 @@ from .video_generator_doubao_seedance_yunwu_api import VideoGeneratorDoubaoSeeda
 from .video_generator_veo_google_api import VideoGeneratorVeoGoogleAPI
 from .video_generator_veo_yunwu_api import VideoGeneratorVeoYunwuAPI
 from .video_generator_comfyui_ltx import VideoGeneratorComfyUILTX
+from .video_generator_comfyui_minimax import VideoGeneratorComfyUIMiniMax
 
 # audio generators
 from .audio_generator_comfyui_qwen import AudioGeneratorComfyUIQwenTTS
@@ -38,5 +39,6 @@ __all__ = [
     "VideoGeneratorVeoGoogleAPI",
     "VideoGeneratorVeoYunwuAPI",
     "VideoGeneratorComfyUILTX",
+    "VideoGeneratorComfyUIMiniMax",
     "AudioGeneratorComfyUIQwenTTS",
 ]

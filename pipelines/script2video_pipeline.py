@@ -12,11 +12,13 @@ from PIL import Image
 from agents import *
 from agents.environment_agent import EnvironmentDesign, CameraCoverage
 from agents.prompt_converter import ShotDescriptionWithDialogues, Dialogue
+from agents.minimax_prompt.agent import PromptConverter as MinimaxPromptConverter
 from agents.narration_agent import NarrationItem, ShotItem, Interval
 import yaml
 from interfaces import *
 from tools.render_backend import RenderBackend
 from utils.provider_presets import create_chat_model
+from utils.dialogues_detect import get_video_duration, detect_dialogues_from_video
 
 class Script2VideoPipeline:
 
@@ -49,12 +51,16 @@ class Script2VideoPipeline:
         self.camera_image_generator = CameraImageGenerator(chat_model=self.chat_model, image_generator=self.image_generator, video_generator=self.video_generator)
         self.reference_image_selector = ReferenceImageSelector(chat_model=self.chat_model)
         self.prompt_converter = PromptConverter()
+        self.minimax_prompt_converter = MinimaxPromptConverter()
         self.narration_agent = NarrationAgent(chat_model=self.chat_model, audio_generator=self.audio_generator)
         self.environment_designer = EnvironmentDesigner(chat_model=self.chat_model)
         self.transition_director = TransitionDirector(chat_model=self.chat_model)
         
         # 检测是否是 LTX 模型（只有 LTX 需要对话融入场景）
         self.is_ltx_model = "ltx" in type(self.video_generator).__name__.lower()
+
+        # 检测是否是 minimax 模型
+        self.is_minimax_model = "minimax" in type(self.video_generator).__name__.lower()
 
         self.working_dir = working_dir
         os.makedirs(self.working_dir, exist_ok=True)
@@ -207,6 +213,7 @@ class Script2VideoPipeline:
                 await self.generate_video_for_single_shot(
                     shot_description=shot_description,
                     characters=characters,
+                    style=style,
                 )
         else:
             # 优先拍摄父相机？
@@ -271,6 +278,7 @@ class Script2VideoPipeline:
                 self.generate_video_for_single_shot(
                     shot_description=shot_description,
                     characters=characters,
+                    style=style,
                 )
                 for shot_description in shot_descriptions
             ]
@@ -517,31 +525,36 @@ class Script2VideoPipeline:
         self,
         shot_description: ShotDescription,
         characters: List[CharacterInScene],
+        style: str,
     ):
-        video_path = os.path.join(self.working_dir, "shots", f"{shot_description.idx}", "video.mp4")
-        if os.path.exists(video_path):
-            print(f"🚀 Skipped generating video for shot {shot_description.idx}, already exists.")
-        else:
-            if not self.gacha_config:
-                await self.frame_events[shot_description.idx]["first_frame"].wait()
-                if shot_description.variation_type in ["medium", "large"]:
-                    await self.frame_events[shot_description.idx]["last_frame"].wait()
-
-            frame_paths = []
-            frame_paths.append(os.path.join(self.working_dir, "shots", f"{shot_description.idx}", "first_frame.png"))
+        if not self.gacha_config:
+            await self.frame_events[shot_description.idx]["first_frame"].wait()
             if shot_description.variation_type in ["medium", "large"]:
-                frame_paths.append(os.path.join(self.working_dir, "shots", f"{shot_description.idx}", "last_frame.png"))
+                await self.frame_events[shot_description.idx]["last_frame"].wait()
 
-            print(f"🎬 Starting video generation for shot {shot_description.idx}...")
-            
-            # 生成融入音效的场景视觉描述和对话列表。对话列表后续做旁白的时候需要
-            # LTX 模型：对话必须融入场景叙述中，而不是分开展示
-            # 将 motion_desc 和 audio_desc 融合，使对话出现在正确的动作位置
-            final_prompt_path = os.path.join(self.working_dir, "shots", f"{shot_description.idx}", "ltx_prompt.json")
-            if os.path.exists(final_prompt_path):
-                print(f"🚀 Skipped generating LTX prompt for shot {shot_description.idx}, already exists.")
-                with open(final_prompt_path, "r", encoding="utf-8") as f:
-                    shot_description_with_dialogues: ShotDescriptionWithDialogues = ShotDescriptionWithDialogues.model_validate(json.load(f))
+        frame_paths = []
+        frame_paths.append(os.path.join(self.working_dir, "shots", f"{shot_description.idx}", "first_frame.png"))
+        if shot_description.variation_type in ["medium", "large"]:
+            frame_paths.append(os.path.join(self.working_dir, "shots", f"{shot_description.idx}", "last_frame.png"))
+
+        print(f"🎬 Starting video generation for shot {shot_description.idx}...")
+        
+        # 生成融入音效的场景视觉描述和对话列表。对话列表后续做旁白的时候需要
+        # LTX 模型：对话必须融入场景叙述中，而不是分开展示
+        # 将 motion_desc 和 audio_desc 融合，使对话出现在正确的动作位置
+        final_prompt_path = os.path.join(self.working_dir, "shots", f"{shot_description.idx}", "ltx_prompt.json")
+        
+        if os.path.exists(final_prompt_path):
+            print(f"🚀 Skipped generating LTX prompt for shot {shot_description.idx}, already exists.")
+            with open(final_prompt_path, "r", encoding="utf-8") as f:
+                shot_description_with_dialogues: ShotDescriptionWithDialogues = ShotDescriptionWithDialogues.model_validate(json.load(f))
+        else:
+            if self.is_minimax_model:
+                shot_description_with_dialogues: ShotDescriptionWithDialogues = await self.minimax_prompt_converter.convert(
+                    style=style,
+                    shot_description=shot_description,
+                    characters=characters,
+                )
             else:
                 shot_description_with_dialogues: ShotDescriptionWithDialogues = await self.prompt_converter.convert(
                     audio_desc=shot_description.audio_desc,
@@ -550,59 +563,81 @@ class Script2VideoPipeline:
                     characters=characters,
                     shot_duration=shot_description.shot_duration or 5.0,
                 )
-                # 写入文件
-                with open(final_prompt_path, 'w', encoding='utf-8') as f:
-                    json.dump(shot_description_with_dialogues.model_dump(), f, ensure_ascii=False, indent=4)
+            # 写入文件
+            with open(final_prompt_path, 'w', encoding='utf-8') as f:
+                json.dump(shot_description_with_dialogues.model_dump(), f, ensure_ascii=False, indent=4)
+        
+        # final_prompt = shot_description_with_dialogues.prompt
+        dialogue_audio_path = None
+
+        if not self.comfyui_enable:
+            return
+
+        if self.is_ltx_model:
+            final_prompt = shot_description_with_dialogues.prompt
+            print(f"📝 LTX Prompt: {final_prompt[:100]}...")
             
-            # final_prompt = shot_description_with_dialogues.prompt
-            dialogue_audio_path = None
-
-            if not self.comfyui_enable:
-                return
-
-            if self.is_ltx_model:
-                final_prompt = shot_description_with_dialogues.prompt
-                print(f"📝 LTX Prompt: {final_prompt[:100]}...")
+            # 生成音频
+            if shot_description_with_dialogues.dialogues:
+                parent_path = os.path.join(self.working_dir, "shots", f"{shot_description.idx}")
+                dialogue_audio_path = os.path.join(parent_path, "final_dialogues.flac")
                 
-                # 生成音频
-                if shot_description_with_dialogues.dialogues:
-                    parent_path = os.path.join(self.working_dir, "shots", f"{shot_description.idx}")
-                    dialogue_audio_path = os.path.join(parent_path, "final_dialogues.flac")
-                    
-                    if os.path.exists(dialogue_audio_path):
-                        print(f"🚀 Skipped generating dialogue audio for shot {shot_description.idx}, already exists.")
-                    else:
-                        for idx, dialogue in enumerate(shot_description_with_dialogues.dialogues):
+                if os.path.exists(dialogue_audio_path):
+                    print(f"🚀 Skipped generating dialogue audio for shot {shot_description.idx}, already exists.")
+                else:
+                    for idx, dialogue in enumerate(shot_description_with_dialogues.dialogues):
+                        audio_path = os.path.join(parent_path, f"{idx}.flac")
+
+                        if os.path.exists(audio_path):
+                            print(f"🚀 Skipped generating dialogue audio for shot {shot_description.idx}, already exists.")
+                            continue
+                        else:
                             audio_output = await self.audio_generator.generate_single_audio(
                                 prompt=dialogue.dialogue,
                                 character=dialogue.speaker,
                                 gender=dialogue.gender,
                             )
                             audio_output.save(os.path.join(parent_path, f"{idx}.flac"))
-                            
-                        dialogue_audio_path, dialogues = await self.audio_generator.adjust_audio(
-                            duration=shot_description.shot_duration or 5.0,
-                            dialogues=shot_description_with_dialogues.dialogues,
-                            shot_path=parent_path,
-                        )
                         
-                        # 重新写入final_prompt_path，更新dialogues
-                        with open(final_prompt_path, 'w', encoding='utf-8') as f:
-                            shot_description_with_dialogues.dialogues = dialogues
-                            json.dump(shot_description_with_dialogues.model_dump(), f, ensure_ascii=False, indent=4)
-            else:
-                # 非 LTX 模型：保持 motion_desc 和 audio_desc 分离的原始格式
-                final_prompt = f"{shot_description.motion_desc}\n{shot_description.audio_desc}"
-            
+                    dialogue_audio_path, dialogues = await self.audio_generator.adjust_audio(
+                        duration=shot_description.shot_duration or 5.0,
+                        dialogues=shot_description_with_dialogues.dialogues,
+                        shot_path=parent_path,
+                    )
+                    
+                    # 重新写入final_prompt_path，更新dialogues
+                    with open(final_prompt_path, 'w', encoding='utf-8') as f:
+                        shot_description_with_dialogues.dialogues = dialogues
+                        json.dump(shot_description_with_dialogues.model_dump(), f, ensure_ascii=False, indent=4)
+        elif self.is_minimax_model:
+            # minimax 模型
+            final_prompt = shot_description_with_dialogues.prompt
+            print(f"📝 Minimax Prompt: {final_prompt[:100]}...")
+        else:
+            # 非 LTX 模型：保持 motion_desc 和 audio_desc 分离的原始格式
+            final_prompt = f"{shot_description.motion_desc}\n{shot_description.audio_desc}"
+
+        video_path = os.path.join(self.working_dir, "shots", f"{shot_description.idx}", "video.mp4")
+        if os.path.exists(video_path):
+            print(f"🚀 Skipped generating video for shot {shot_description.idx}, already exists.")
+        else:
             # 基于运镜生成视频
-            video_output = await self.video_generator.generate_single_video(
-                prompt=final_prompt + "\n整个过程光影流动自然，人物动作与物体形变连贯衔接。",
-                reference_image_paths=frame_paths,
-                audio_path=dialogue_audio_path,
-                duration=int(shot_description.shot_duration or 5.0),
-                use_xianxia_lora=shot_description_with_dialogues.use_xianxia_lora,
-                is_small_people=shot_description_with_dialogues.is_small_people,
-            )
+            if self.is_minimax_model:
+                video_output = await self.video_generator.generate_single_video(
+                    prompt=final_prompt,
+                    reference_image_paths=frame_paths,
+                    audio_path=dialogue_audio_path,
+                    duration=int(shot_description.shot_duration or 5.0),
+                )
+            else:
+                video_output = await self.video_generator.generate_single_video(
+                    prompt=final_prompt + "\n整个过程光影流动自然，人物动作与物体形变连贯衔接。",
+                    reference_image_paths=frame_paths,
+                    audio_path=dialogue_audio_path,
+                    duration=int(shot_description.shot_duration or 5.0),
+                    use_xianxia_lora=shot_description_with_dialogues.use_xianxia_lora,
+                    is_small_people=shot_description_with_dialogues.is_small_people,
+                )
 
             # 后续统一成 1680
             if shot_description_with_dialogues.is_small_people:
@@ -1123,75 +1158,107 @@ class Script2VideoPipeline:
             print(f"🚀 Loaded narration description from existing file.")
         else:
             print(f"🔍 Generating narration description...")
-            
-            # 1. 从每个 shot 的 ltx_prompt.json 取 dialogues，并构建 storyboard
+
+            narration_interval_path = os.path.join(self.working_dir, "narration_interval.json")
             shot_items: List[ShotItem] = []
-            for shot in storyboard:
-                # 读取 ltx_prompt.json 获取 dialogues 和 shot_duration
-                shot_path = os.path.join(self.working_dir, "shots", str(shot.idx))
-                ltx_prompt_path = os.path.join(shot_path, "ltx_prompt.json")
-                dialogues = []
-                shot_duration = 5.0
-                
-                if os.path.exists(ltx_prompt_path):
-                    with open(ltx_prompt_path, 'r', encoding='utf-8') as f:
-                        print(f"Reading ltx_prompt.json for shot {shot.idx}")
-                        ltx_prompt = json.load(f)
-                        if ltx_prompt.get("dialogues"):
-                            dialogues = [Dialogue.model_validate(d) for d in ltx_prompt["dialogues"]]
-                        # 从 ltx_prompt 获取 shot_duration（如果存在）
-                        if ltx_prompt.get("shot_duration"):
-                            shot_duration = float(ltx_prompt["shot_duration"])
-                
-                # 构建 dialogue_intervals（对话占用的时间区间）
-                dialogue_intervals = []
-                for d in dialogues:
-                    dialogue_intervals.append(Interval(
-                        start=d.start_time,
-                        end=d.start_time + d.duration
-                    ))
-                
-                # 计算 available_intervals（扣除对话和0.5秒安全间隙后的可用区间）
-                available_intervals = []
-                
-                if not dialogue_intervals:
-                    # 没有对话时，整个镜头时长都可作为可用区间
-                    available_intervals.append(Interval(
-                        start=0,
-                        end=shot_duration
-                    ))
-                else:
-                    # 按时间排序对话区间
-                    sorted_intervals = sorted(dialogue_intervals, key=lambda x: x.start)
+            
+            if os.path.exists(narration_interval_path):
+                with open(narration_interval_path, 'r', encoding='utf-8') as f:
+                    narration_interval = json.load(f)
+                shot_items = [ShotItem(**item) for item in narration_interval]
+            else:
+                # 1. 通过 ffmpeg silencedetect 从每个 shot 的 video.mp4 检测对话，并构建 storyboard
+                for shot in storyboard:
+                    shot_path = os.path.join(self.working_dir, "shots", str(shot.idx))
+                    video_path = os.path.join(shot_path, "video.mp4")
+                    dialogues = []
+                    shot_duration = 5.0
+
+                    if not os.path.exists(video_path):
+                        continue
+
+                    video_duration = get_video_duration(video_path)
+                    if video_duration:
+                        shot_duration = video_duration
+
+                    detected = detect_dialogues_from_video(video_path)
+                    if detected:
+                        dialogues = [Dialogue(
+                            speaker="Unknown",
+                            gender="Female",
+                            emotion="neutral",
+                            dialogue="",
+                            start_time=start,
+                            duration=end - start,
+                        ) for start, end in detected]
+                        
+                        print(f"🎙️ Detected {len(dialogues)} dialogue segments from video.mp4 for shot {shot.idx}")
                     
-                    # 判断大于3s才算可用区间
-                    if sorted_intervals[0].start > 3:
+                    # else:
+                        # 回退：从 ltx_prompt.json 获取 shot_duration（如果存在）
+                        # ltx_prompt_path = os.path.join(shot_path, "ltx_prompt.json")
+                        # if os.path.exists(ltx_prompt_path):
+                        #     with open(ltx_prompt_path, 'r', encoding='utf-8') as f:
+                        #         ltx_prompt = json.load(f)
+                        #     if ltx_prompt.get("shot_duration"):
+                        #         shot_duration = float(ltx_prompt["shot_duration"])
+                    
+                    # 构建 dialogue_intervals（对话占用的时间区间）
+                    dialogue_intervals = []
+                    for d in dialogues:
+                        dialogue_intervals.append(Interval(
+                            start=d.start_time,
+                            end=d.start_time + d.duration
+                        ))
+                    
+                    # 计算 available_intervals（扣除对话和0.5秒安全间隙后的可用区间）
+                    available_intervals = []
+                    
+                    if not dialogue_intervals:
+                        # 没有对话时，整个镜头时长都可作为可用区间
                         available_intervals.append(Interval(
                             start=0,
-                            end=sorted_intervals[0].start - 3
-                        ))
-                    
-                    for i in range(len(sorted_intervals) - 1):
-                        if sorted_intervals[i + 1].start - sorted_intervals[i].end > 3:
-                            available_intervals.append(Interval(
-                                start=sorted_intervals[i].end,
-                                end=sorted_intervals[i + 1].start
-                            ))
-                            
-                    if sorted_intervals[-1].end < shot_duration - 3:
-                        available_intervals.append(Interval(
-                            start=sorted_intervals[-1].end,
                             end=shot_duration
                         ))
-                
-                shot_items.append(ShotItem(
-                    idx=str(shot.idx),
-                    shot_duration=shot_duration,
-                    dialogue_intervals=dialogue_intervals,
-                    available_intervals=available_intervals,
-                    visual_desc=shot.visual_desc,
-                    audio_desc=shot.audio_desc or ""
-                ))
+                    else:
+                        # 按时间排序对话区间
+                        sorted_intervals = sorted(dialogue_intervals, key=lambda x: x.start)
+                        
+                        # 判断大于3s才算可用区间
+                        if sorted_intervals[0].start > 2.5:
+                            available_intervals.append(Interval(
+                                start=0,
+                                end=sorted_intervals[0].start
+                            ))
+                        
+                        for i in range(len(sorted_intervals) - 1):
+                            if sorted_intervals[i + 1].start - sorted_intervals[i].end > 2.5:
+                                available_intervals.append(Interval(
+                                    start=sorted_intervals[i].end,
+                                    end=sorted_intervals[i + 1].start
+                                ))
+                                
+                        if sorted_intervals[-1].end < shot_duration - 2.5:
+                            available_intervals.append(Interval(
+                                start=sorted_intervals[-1].end,
+                                end=shot_duration
+                            ))
+
+                    shot_items.append(ShotItem(
+                        idx=str(shot.idx),
+                        shot_duration=shot_duration,
+                        dialogue_intervals=dialogue_intervals,
+                        available_intervals=available_intervals,
+                        visual_desc=shot.visual_desc,
+                        audio_desc=shot.audio_desc or ""
+                    ))
+
+                narration_interval_data = [item.model_dump() for item in shot_items]
+                with open(narration_interval_path, 'w', encoding='utf-8') as f:
+                    json.dump(narration_interval_data, f, ensure_ascii=False, indent=4)
+            
+            if self.check_interrupt("narration_audio"):
+                return
 
             # 2. 调用 NarrationAgent.generate_narration 生成旁白
             narration_desc = await self.narration_agent.generate_narration(
@@ -1214,7 +1281,7 @@ class Script2VideoPipeline:
                     _, trans_dur = trans
                     narration_desc[i].shot_duration += trans_dur
             print(f"🔧 Adjusted narration shot_durations with transition gaps.")
-        print(55555, narration_desc)
+
         # 4. 生成旁白音频（shot 尾部静音中自然包含转场时长）
         await self.narration_agent.generate_audio(
             narration=narration_desc,
