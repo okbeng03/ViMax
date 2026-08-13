@@ -11,6 +11,9 @@ from utils.completion_logger import log_agent
 from langchain.chat_models.base import BaseChatModel
 from langchain_core.output_parsers import PydanticOutputParser
 
+from utils.provider_presets import create_chat_model
+from configs.config import model_name
+
 system_prompt_template_narration = \
 """
 [Role]
@@ -107,13 +110,16 @@ class NarrationAgent:
             chat_model: BaseChatModel,
             audio_generator
         ):
-        self.chat_model = chat_model
+
+        self.chat_model = create_chat_model(
+            model_provider="qwen",
+            model=model_name.get("secondary", "deepseek-v4-flash-0731"),
+        )
         self.audio_generator = audio_generator
 
     @log_agent("NarrationAgent")
     @retry(stop=stop_after_attempt(3), after=after_func)
     async def generate_narration(self, story: str, storyboard: List[ShotItem], user_requirement: str, retry_timeout: int = 300) -> List[NarrationItem]:
-        
         class NarrationResponse(BaseModel):
             narration: List[NarrationItem] = Field(..., description="旁白列表")
             

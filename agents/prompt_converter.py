@@ -24,7 +24,7 @@ from langchain_core.output_parsers import PydanticOutputParser
 
 from utils.provider_presets import create_chat_model
 from utils.completion_logger import log_agent
-
+from configs.config import model_name
 
 logger = logging.getLogger(__name__)
 
@@ -186,7 +186,7 @@ class PromptConverter:
         """
         self.chat_model = create_chat_model(
             model_provider="qwen",
-            model="kimi-k2.6",
+            model=model_name.get("tertiary", "deepseek-v4-flash-0731"),
         )
 
     @log_agent("PromptConverter")

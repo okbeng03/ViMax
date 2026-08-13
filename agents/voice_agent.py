@@ -28,7 +28,7 @@ from utils.retry import after_func
 from utils.completion_logger import log_agent
 from utils.voice import register_voice
 from interfaces.character import CharacterInScene
-from configs.config import working_dir
+from configs.config import working_dir, model_name
 
 logger = logging.getLogger(__name__)
 
@@ -228,7 +228,7 @@ class VoiceDesigner:
     ):
         self.chat_model = create_chat_model(
             model_provider="qwen",
-            model="deepseek-v4-flash-0731",
+            model=model_name.get("tertiary", "deepseek-v4-flash-0731"),
         )
 
     # ---------- LLM：生成音色设计方案 ----------

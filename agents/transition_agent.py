@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain.chat_models.base import BaseChatModel
 from utils.provider_presets import create_chat_model
-
+from configs.config import model_name
 from utils.retry import after_func
 from utils.completion_logger import log_agent
 
@@ -588,7 +588,7 @@ class TransitionDirector:
     ):
         self.chat_model = create_chat_model(
             model_provider="qwen",
-            model="deepseek-v4-flash-0731",
+            model=model_name.get("tertiary", "deepseek-v4-flash-0731"),
         )
 
     @log_agent("TransitionDirector")

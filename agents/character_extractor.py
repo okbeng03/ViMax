@@ -10,6 +10,8 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 from utils.retry import after_func
 from utils.completion_logger import log_agent
+from utils.provider_presets import create_chat_model
+from configs.config import model_name
 
 
 system_prompt_template_extract_characters = \
@@ -97,7 +99,10 @@ class CharacterExtractor:
         self,
         chat_model,
     ):
-        self.chat_model = chat_model
+        self.chat_model = create_chat_model(
+            model_provider="qwen",
+            model=model_name.get("secondary", "deepseek-v4-flash-0731"),
+        )
 
     @log_agent("CharacterExtractor")
     @retry(

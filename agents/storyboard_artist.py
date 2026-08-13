@@ -11,6 +11,8 @@ from agents.environment_agent import EnvironmentDesign
 
 from utils.retry import after_func
 from utils.completion_logger import log_agent
+from utils.provider_presets import create_chat_model
+from configs.config import model_name
 
 system_prompt_template_design_storyboard = \
 """
@@ -397,7 +399,7 @@ The storyboard style must match:
 
 ==================================================
 [Guidelines]
-- Ensure all output values (except keys) match the language used in the script.
+- Ensure all output values (except keys) used in the script **使用中文**.
 - Each shot must have a clear narrative purpose—such as establishing the setting, showing character relationships, or highlighting reactions.
 - Use cinematic language deliberately: close-ups for emotion, wide shots for context, and varied angles to direct audience attention.
 - Keep character names in visual descriptions and speaker fields consistent with the character list. In visual descriptions, enclose names in angle brackets (e.g., <Alice>), but not in dialogue or speaker fields.
@@ -1071,6 +1073,10 @@ class StoryboardArtist:
         chat_model: BaseChatModel,
     ):
         self.chat_model = chat_model
+        self.secondary_chat_model = create_chat_model(
+            model_provider="qwen",
+            model=model_name.get("secondary", "deepseek-v4-flash-0731"),
+        )
 
 
     @retry(stop=stop_after_attempt(3), after=after_func)
@@ -1198,7 +1204,7 @@ class StoryboardArtist:
                 ('human', human_prompt_template_decompose_visual_description),
             ]
         )
-        chain = prompt_template | self.chat_model | parser
+        chain = prompt_template | self.secondary_chat_model | parser
 
         visual_desc = shot_brief_desc.visual_desc.strip()
 
