@@ -61,6 +61,7 @@ class HanziPipeline:
         image_generator: Any,
         video_generator: Any,
         audio_generator: Any,
+        minor_video_generator: Any,
         working_dir: str,
         hanzi: str,
         relate_hanzi: List[str] | None = None,
@@ -72,6 +73,7 @@ class HanziPipeline:
         self.image_generator: Any = image_generator
         self.video_generator: Any = video_generator
         self.audio_generator: Any = audio_generator
+        self.minor_video_generator: Any = minor_video_generator
         self.working_dir: str = working_dir
         self.hanzi: str = hanzi
         self.relate_hanzi: List[str] | None = relate_hanzi
@@ -145,16 +147,7 @@ class HanziPipeline:
         url = f"https://www.zdic.net/hans/{hanzi}"
         
         try:
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-                "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
-            }
-            response = requests.get(url, headers=headers, timeout=30)
-            response.raise_for_status()
-            response.encoding = 'utf-8'
-            
-            soup = BeautifulSoup(response.text, 'html.parser')
+            soup = self._html_parse(url)
             
             # 提取基础解释
             basic_definitions = self._extract_basic_explanation(soup, is_self)
@@ -180,6 +173,21 @@ class HanziPipeline:
         except Exception as e:
             logger.error(f"Failed to crawl hanzi info: {e}")
             raise
+
+    def _html_parse(self, url: str) -> BeautifulSoup:
+        """解析 HTML 页面"""
+
+        if url:
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+                "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+            }
+            response = requests.get(url, headers=headers, timeout=30)
+            response.raise_for_status()
+            response.encoding = 'utf-8'
+            
+            return BeautifulSoup(response.text, 'html.parser')
 
     def _extract_basic_explanation(self, soup: BeautifulSoup, is_self: bool = False) -> str:
         """提取基础解释"""
@@ -246,7 +254,7 @@ class HanziPipeline:
         
         return definitions
 
-    def _extract_glyphs(self, soup: BeautifulSoup) -> list[dict[str, str]]:
+    def _extract_glyphs(self, soup: BeautifulSoup, target_types: list[str] = ['甲骨文', '金文', '楚系简帛', '隶书', '楷书']) -> list[dict[str, str]]:
         """
         提取字源字形（甲骨文、金文、楚系簡帛、楷書）
         
@@ -257,9 +265,6 @@ class HanziPipeline:
             字形列表，每个字形包含 type 和 svg_url
         """
         glyphs = []
-        
-        # 用户需要的字形类型映射
-        target_types = ['甲骨文', '金文', '楚系简帛', '隶书', '楷书']
         
         # 查找字源字形区域
         glyph_block = soup.find('section', id="zyzx")
@@ -340,6 +345,44 @@ class HanziPipeline:
                     "alt": "楷书",
                 })
 
+        if len(glyphs):
+            # 提取繁体字链接
+            # HTML结构:
+            # div.char-card__variants
+            #   span.meta-badge（内容包含"繁体"）
+            #   紧跟其后的兄弟 ul.variant-list > li > a.variant-link[href]
+            # 取 "繁体" badge 后第一个 variant-list 中唯一的 <a> 链接，拼接 host
+            variants_div = soup.find('div', class_='char-card__variants')
+            if variants_div:
+                for child in variants_div.find_all(recursive=False):
+                    if (
+                        child.name == 'span'
+                        and 'meta-badge' in (child.get('class') or [])
+                        and '繁体' in child.get_text(strip=True)
+                    ):
+                        # 找其后紧跟的兄弟 ul.variant-list
+                        variant_ul = child.find_next_sibling('ul', class_='variant-list')
+                        if variant_ul:
+                            link = variant_ul.find('a')
+                            if link and link.get('href'):
+                                href = link['href']
+                                if href.startswith('//'):
+                                    full_url = 'https:' + href
+                                else:
+                                    full_url = 'https://www.zdic.net' + href
+
+                                # 获取繁体字形
+                                fanti_soup = self._html_parse(full_url)
+                                if fanti_soup:
+                                    fanti_glyphs = self._extract_glyphs(fanti_soup, target_types=["楷书"])
+                                    if fanti_glyphs:
+                                        fanti_glyph = fanti_glyphs[0]
+                                        fanti_glyph["type"] = "繁体"
+
+                                        # 插入倒数第二位
+                                        glyphs.insert(-1, fanti_glyph)
+
+                        break
 
         return glyphs
 
@@ -554,7 +597,7 @@ class HanziPipeline:
         transitions = []
         
          # 定义字形演变顺序
-        glyph_order = ['甲骨文', '金文', '楚系简帛', '隶书', '楷书']
+        glyph_order = ['甲骨文', '金文', '楚系简帛', '说文', '隶书', '繁体', '楷书']
         
         # 获取按顺序排列的字形路径
         ordered_glyphs = []
@@ -668,13 +711,22 @@ class HanziPipeline:
 
             try:
                 # 生成过渡视频（5秒纯动画，不包含停顿）
-                prompt = f"开头1s保持首帧静止，1s后，{transition.description}，整个变化过程持续到4s，然后保持静止。没有背景音乐"
-                video_output = await self.video_generator.generate_single_video(
-                    prompt=prompt,
-                    reference_image_paths=[from_hanzi_path, to_hanzi_path],
-                    duration=5,
-                    aspect_ratio="1:1"
-                )
+                if self.minor_video_generator:
+                    prompt = f"开头1s保持首帧静止，1s后，{transition.description}，整个变化过程持续到4s，然后保持静止。没有背景音乐"
+                    video_output = await self.minor_video_generator.generate_single_video(
+                        prompt=prompt,
+                        reference_image_paths=[from_hanzi_path, to_hanzi_path],
+                        duration=5,
+                        aspect_ratio="1:1"
+                    )
+                else:
+                    prompt = f"这是一个汉字不同时期字形的演变动画，是物理轮廓的平滑形变，从图片1平滑形变过渡到图片2，禁止任何逐笔书写的顺序感，整个视频保持白色米格背景，禁止改变白色米格背景\n开头1s保持首帧静止，1s后，{transition.description}，整个变化过程持续到4s，然后保持静止。没有背景音乐"
+                    video_output = await self.video_generator.generate_single_video(
+                        prompt=prompt,
+                        reference_image_paths=[from_hanzi_path, to_hanzi_path],
+                        duration=5,
+                        aspect_ratio="1:1"
+                    )
                 
                 # 保存原始视频
                 # raw_video_path = os.path.join(evolution_dir, f"{from_type}_to_{to_type}_raw.mp4")
@@ -1858,9 +1910,9 @@ class HanziPipeline:
         stroke_video_path = await self.generate_stroke_video()
 
         # Step 6: 生成演变动画
-        if self.disable_transition:
-            transition_video_path = ""
-        else:
+        transition_video_path = ""
+
+        if not self.disable_transition and len(glyph_png_paths) > 2:
             transition_video_path = await self.generate_evolution_video(glyph_png_paths)
 
         if self.check_interrupt("transition"):
