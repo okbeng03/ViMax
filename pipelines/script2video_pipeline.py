@@ -349,11 +349,11 @@ class Script2VideoPipeline:
 
                 if has_audio:
                     # 视频有音频，混合对话和旁白
-                    # 保持旁白和对话音量一致
+                    # normalize=0 不做音量归一化，两轨都保持原始音量（极端叠加时可能削波）
                     subprocess.run([
                         "ffmpeg", "-y", "-i", story_video_path, "-i", narration_audio_path,
-                        "-filter_complex", "[1:a]volume=1.0[narration];[0:a]volume=1.0[dialogue];[dialogue][narration]amix=inputs=2:duration=first[mixed];[mixed]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[out]",
-                        "-map", "0:v", "-map", "[out]",
+                        "-filter_complex", "[0:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[dialogue];[1:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[narration];[dialogue][narration]amix=inputs=2:duration=first:normalize=0[mixed]",
+                        "-map", "0:v", "-map", "[mixed]",
                         "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
                         final_video_path
                     ], check=True, capture_output=True)
