@@ -63,6 +63,16 @@ class PromptConverter:
             characters: 角色列表
         """
         parser = PydanticOutputParser(pydantic_object=ShotDescriptionWithDialogues)
+
+        # 从 shot_description ff_vis_char_idxs 和 lf_vis_char_idxs 中过滤包含在镜头中的角色。并集 + 唯一
+        vis_char_idxs = []
+        seen = set()
+        for idx in [*shot_description.ff_vis_char_idxs, *shot_description.lf_vis_char_idxs]:
+            if idx not in seen:
+                seen.add(idx)
+                vis_char_idxs.append(idx)
+        characters = [characters[idx] for idx in vis_char_idxs]
+
         characters_str = "\n".join([f"{character.identifier_in_scene}: {character.static_features}{character.dynamic_features}" for character in characters])
         task_type = "I2VA"
         frame_description = f"first frame description: {shot_description.ff_desc}"
