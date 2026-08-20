@@ -33,10 +33,12 @@ class Idea2VideoPipeline:
         relate_hanzi: List[str] = None,
         gacha_config: dict = None,
         config: dict = None,
+        minor_video_generator: str = None,
     ):
         self.chat_model = chat_model
         self.image_generator = image_generator
         self.video_generator = video_generator
+        self.minor_video_generator = minor_video_generator
         self.audio_generator = audio_generator
         self.working_dir = working_dir
         self.comfyui_base_url = comfyui_base_url
@@ -84,6 +86,7 @@ class Idea2VideoPipeline:
             relate_hanzi=config.get("relate_hanzi", "").split(",") if config.get("relate_hanzi") else None,
             gacha_config=config["gacha_config"],
             config=config,
+            minor_video_generator=backend.minor_video_generator,
         )
 
     async def _check_comfyui_health(self):
@@ -145,15 +148,15 @@ class Idea2VideoPipeline:
         voice_list = VoiceManager.instance().list_all()
 
         # 检查角色是否存在音色，不存在则创建音色
-        for character in characters:
-            if character.identifier_in_scene not in voice_list:
-                # 如果 identifier_in_scene 包含 “字” 字符，则跳过
-                if "字" in character.identifier_in_scene and len(character.identifier_in_scene) == 2:
-                    continue
+        # for character in characters:
+        #     if character.identifier_in_scene not in voice_list:
+        #         # 如果 identifier_in_scene 包含 “字” 字符，则跳过
+        #         if "字" in character.identifier_in_scene and len(character.identifier_in_scene) == 2:
+        #             continue
 
-                if self.comfyui_enable:
-                    voice = await self.voice_designer.design_and_register(character, self.audio_generator)
-                    register_voice(name=voice["character"], gender=voice["gender"])
+        #         if self.comfyui_enable:
+        #             voice = await self.voice_designer.design_and_register(character, self.audio_generator)
+        #             register_voice(name=voice["character"], gender=voice["gender"])
 
         return characters
 
@@ -505,6 +508,7 @@ class Idea2VideoPipeline:
                 image_generator=self.image_generator,
                 video_generator=self.video_generator,
                 audio_generator=self.audio_generator,
+                minor_video_generator=self.minor_video_generator,
                 working_dir=hanzi_working_dir,
                 hanzi=self.hanzi,
                 relate_hanzi=self.relate_hanzi,
@@ -643,8 +647,8 @@ class Idea2VideoPipeline:
                 if os.path.exists(intro_video_path):
                     video_clips.insert(0, VideoFileClip(intro_video_path, audio=True))
                 
-                if self.mode == "hanzi" and hanzi_video_path:
-                    video_clips.append(VideoFileClip(hanzi_video_path, audio=True))
+                # if self.mode == "hanzi" and hanzi_video_path:
+                #     video_clips.append(VideoFileClip(hanzi_video_path, audio=True))
                 
                 final_video = concatenate_videoclips(video_clips, method="compose")
                 final_video.write_videofile(final_video_path, codec="libx264", preset="medium", audio_codec="aac", fps=None, audio_bitrate="192k")
