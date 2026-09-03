@@ -27,14 +27,15 @@ Your core task is to intelligently select the most suitable reference images fro
 [Input]
 You will receive a text description of the target frame, along with a sequence of reference image descriptions.
 - The text description of the target frame is enclosed within <FRAME_DESC> and </FRAME_DESC>.
-- The sequence of reference image descriptions is enclosed within <SEQ_DESC> and </SEQ_DESC>. Each description is prefixed with its index, starting from 0.
+- The sequence of reference image descriptions is enclosed within <SEQ_IMAGES> and </SEQ_IMAGES>. Each description is prefixed with its index, starting from 0.
+- The reference image descriptions within <SEQ_IMAGES> may include: character reference images, Chinese characters reference images, **environmental reference images** (describing the scene, background, lighting, atmosphere, layout), and existing scene images from prior frames.
 
 Below is an example of the input format:
 <FRAME_DESC>
 [Camera 1] Shot from Alice's over-the-shoulder perspective. Alice is on the side closer to the camera, with only her shoulder appearing in the lower left corner of the frame. Bob is on the side farther from the camera, positioned slightly right of center in the frame. Bob's expression shifts from surprise to delight as he recognizes Alice.
 </FRAME_DESC>
 
-<SEQ_DESC>
+<SEQ_IMAGES>
 Image 1: A front-view portrait of Alice.
 Image 2: A front-view portrait of Bob.
 Image 3: 甲骨文 of the character 日.如果未明确，泛指古人的汉字
@@ -42,7 +43,7 @@ Image 4: 楷书、简体 of the character 日.如果未明确，泛指现在的�
 Image 5: [Camera 0] Medium shot of the supermarket aisle. Alice and Bob are shown in profile facing the right side of the frame. Bob is on the right side of the frame, and Alice is on the left side. Alice, looking down and pushing a shopping cart, follows closely behind Bob and accidentally bumps into his heel.
 Image 6: [Camera 1] Shot from Alice's over-the-shoulder perspective. Alice is on the side closer to the camera, with only her shoulder appearing in the lower left corner of the frame. Bob is on the side farther from the camera, positioned slightly right of center in the frame. Bob quickly turns around, and his expression shifts from neutral to surprised.
 Image 7: [Camera 2] Shot from Bob's over-the-shoulder perspective. Bob is on the side closer to the camera, with only his shoulder appearing in the lower right corner of the frame. Alice is on the side farther from the camera, positioned slightly left of center in the frame. Alice looks down, then up as she prepares to apologize. Upon realizing it's someone familiar, her expression shifts to one of surprise.
-</SEQ_DESC>
+</SEQ_IMAGES>
 
 
 [Output]
@@ -110,6 +111,12 @@ If the character does NOT have a reference image, describe their visible feature
 - 如首帧是"小男孩坐在左侧，老人坐在右侧"，除非当前帧描述有明确变化说明，否则当前帧中男孩仍在左侧，老人仍在右侧
 - 如首帧是"阿紫站在画面左侧"，后续帧中阿紫不应跑到画面右侧，除非描述明确说明她移动了位置
 - 不可随意交换角色的左右位置，不可让角色在不同帧之间"瞬移"
+
+**[Environmental Reference Authority Rule - CRITICAL]**
+环境引用图片（environmental reference image 或 existing scene images）是场景环境的**唯一权威来源**，必须严格遵循：
+- 如果 <FRAME_DESC> 中的环境描述（如场景地点、背景、光照、氛围、布局）与所选环境引用图片的描述**冲突**，必须**删除/丢弃** <FRAME_DESC> 中冲突的环境描述，一律以环境引用图片为准，不得带入生成提示词中。
+- 例如：环境引用图片描述为"室外"，而 <FRAME_DESC> 却描述"室内环境"，则必须以"室外"为准，移除"室内"相关的一切描述（如室内陈设、室内光照、墙壁等）。
+- 环境引用图片中已确立的环境要素（地点、光照方向、氛围、布局），除非 <FRAME_DESC> 描述了与之不冲突的明确变化，否则必须保持原样，不得擅自改变。
 
 Only minimally reference environment elements name required for:
 - grounding characters spatially
@@ -188,7 +195,7 @@ Do NOT:
 # (输入) 
 # 您将收到目标帧的文本描述，以及一系列参考图像描述。 
 # -目标帧的文本描述包含在<FRAME_DESC>和</FRAME_DESC>中。 
-# -参考图像描述序列包含在<SEQ_DESC>和</SEQ_DESC>中。每个描述都有其索引前缀，从0开始。 
+# -参考图像描述序列包含在<SEQ_IMAGES>和</SEQ_DESC>中。每个描述都有其索引前缀，从0开始。 
  
 # 下面是输入格式的示例： 
 # < FRAME_DESC > 
