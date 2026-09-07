@@ -14,7 +14,8 @@ from utils.completion_logger import log_agent
 from utils.provider_presets import create_chat_model
 from configs.config import model_name
 
-system_prompt_template_design_storyboard = \
+# 依赖环境版本
+system_prompt_template_design_storyboard_with_environment = \
 """
 [ROLE]
 
@@ -735,7 +736,7 @@ The storyboard style must match:
 # -时间一致性：如果未特别说明，保持镜头时间与脚本设置相匹配，保证光感一致性。如是晚上户外，深蓝色夜幕铺展，环境光线柔和静谧，那要保持一致，不能缺失后导致是白天亮光。
 # -如果镜头出现非角色列表中的角色，要根据场景详细描述其静态特征(such as facial features and body shape)和动态特征(such as clothing and accessories)
 
-human_prompt_template_design_storyboard = \
+human_prompt_template_design_storyboard_with_environment = \
 """
 <SCRIPT>
 {script_str}
@@ -769,6 +770,63 @@ human_prompt_template_design_storyboard = \
 <CAMERA_LIBRARY>
 {camera_coverages_str}
 </CAMERA_LIBRARY>
+"""
+
+## 无环境版本
+system_prompt_template_design_storyboard = \
+"""
+[Role]
+You are a professional storyboard artist with the following core skills:
+- Script Analysis: Ability to quickly interpret a script's text, identifying the setting, character actions, dialogue, emotions, and narrative pacing.
+- Visualization: Expertise in translating written descriptions into visual frames, including composition, lighting, and spatial arrangement.
+- Storyboarding: Proficiency in cinematic language, such as shot types (e.g., close-up, medium shot, wide shot), camera angles (e.g., high angle, eye-level), camera movements (e.g., zoom, pan), and transitions.
+- Narrative Continuity: Ability to ensure the storyboard sequence is logically smooth, highlights key plot points, and maintains emotional consistency.
+- Technical Knowledge: Understanding of basic storyboard formats and industry standards, such as using numbered shots and concise descriptions.
+
+[Task]
+Your task is to design a complete storyboard based on a user-provided script (which contains only one scene). The storyboard should be presented in text form, clearly displaying the visual elements and narrative flow of each shot to help the user visualize the scene.
+
+[Input]
+The user will provide the following input.
+- Script:A complete scene script containing dialogue, action descriptions, and scene settings. The script focuses on only one scene; there is no need to handle multiple scene transitions. The script input is enclosed within <SCRIPT> and </SCRIPT>.
+- Characters List: A list describing basic information for each character, such as name, personality traits, appearance (if relevant). The character list is enclosed within <CHARACTERS> and </CHARACTERS>.
+- User requirement: The user requirement (optional) is enclosed within <USER_REQUIREMENT> and </USER_REQUIREMENT>, which may include:
+    - Target audience (e.g., children, teenagers, adults).
+    - Storyboard style (e.g., realistic, cartoon, abstract).
+    - Desired number of shots (e.g., "not more than 10 shots").
+    - Other specific instructions (e.g., emphasize the characters' actions).
+
+[Output]
+{format_instructions}
+
+[Guidelines]
+- Ensure all output values (except keys) used in the script **使用中文**..
+- Each shot must have a clear narrative purpose—such as establishing the setting, showing character relationships, or highlighting reactions.
+- Use cinematic language deliberately: close-ups for emotion, wide shots for context, and varied angles to direct audience attention.
+- When designing a new shot, first consider whether it can be filmed using an existing camera position. Introduce a new one only if the shot size, angle, and focus differ significantly. If the camera undergoes significant movement, it cannot be used thereafter.
+- Keep character names in visual descriptions and speaker fields consistent with the character list. In visual descriptions, enclose names in angle brackets (e.g., <Alice>), but not in dialogue or speaker fields.
+- When describing visual elements, it is necessary to indicate the position of the element within the frame. For example, Character A is on the left side of the frame, facing toward the right, with a table in front of him. The table is positioned slightly to the left of the center of the frame. Ensure that invisible elements are not included. For instance, do not describe someone behind a closed door if they cannot be seen.
+- Avoid unsafe content (violence, discrimination, etc.) in visual descriptions. Use indirect methods like sound or suggestive imagery when needed, and substitute sensitive elements (e.g., ketchup for blood).
+- Assign at most one dialogue line per character per shot. Each line of dialogue should correspond to a shot.
+- Each shot requires an independent description without reference to each other.
+- When the shot focuses on a character, describe which specific body part the focus is on.
+- When describing a character, it is necessary to indicate the direction they are facing.
+"""
+
+
+human_prompt_template_design_storyboard = \
+"""
+<SCRIPT>
+{script_str}
+</SCRIPT>
+
+<CHARACTERS>
+{characters_str}
+</CHARACTERS>
+
+<USER_REQUIREMENT>
+{user_requirement_str}
+</USER_REQUIREMENT>
 """
 
 system_prompt_template_decompose_visual_description = \
@@ -872,12 +930,433 @@ The final duration must allow:
 - environmental transitions to remain understandable
 
 ==================================================
-[Motion Desc Rules]
-- 如果是跑动动作，不要使用固定镜头，而应该使用平移跟拍，如侧面平移跟拍
-- 如果是大幅度全身姿态重构，减少动作数量，强调缓慢连续动作，或让镜头更远
+[Motion Desc Rules — MiniMax H3 Enhanced]
+
+### 1. Core Principle: Preserve and Expand the Storyboard Motion
+
+The Motion Description should fully express the cinematic action implied by the storyboard rather than aggressively simplifying motion for model stability.
+
+For MiniMax H3, complex character movement, camera movement, environmental reactions, and multi-stage actions may be described in detail when they form a clear and physically continuous sequence.
+
+Do not reduce meaningful storyboard actions merely to avoid large motion.
+
+Instead, convert the action into a **clear, continuous motion path**:
+
+**initial state → action trigger → body movement → environmental/object response → camera response → action completion → final stable state**
+
+Every major movement should have a clear:
+
+* starting position
+* movement direction
+* movement path
+* body orientation
+* spatial relationship
+* completion state
+
+Avoid describing disconnected actions without showing how one action naturally leads into the next.
+
+---
+
+### 2. Motion Description Must Be Cinematically Staged
+
+The Motion Description should not simply list events.
+
+It should describe how the action unfolds visually over time, including:
+
+1. **Camera movement**
+2. **Character movement**
+3. **Object movement**
+4. **Environmental response**
+5. **Changes in composition**
+6. **Motion completion and stabilization**
+
+Prefer a coherent cinematic progression rather than a sequence of unrelated movements.
+
+For example, avoid:
+
+> The boy runs forward. The camera moves. The door opens. Light appears.
+
+Prefer:
+
+> The camera begins tracking laterally as 小豆丁 moves from the left side of the frame toward the right. As he accelerates across the ground, his body leans forward and his arms swing naturally with the running rhythm. The camera maintains his position near the center of the composition while the background slides continuously behind him. As he approaches the ancient door, the door panels begin to separate, and golden light gradually spills across the ground in front of him.
+
+---
+
+### 3. Running and Fast Movement
+
+For running, chasing, rushing, or other strong directional movement, the camera should generally support the character's movement.
+
+Do not use a completely static camera when the storyboard emphasizes spatial travel.
+
+Choose an appropriate camera strategy according to the direction of movement:
+
+#### Sideways movement
+
+Use:
+
+* lateral tracking shot
+* side-follow tracking shot
+* parallel dolly movement
+
+The camera should move in the same general direction as the character, allowing the background to create visible parallax.
+
+#### Forward movement toward a destination
+
+Use:
+
+* forward tracking shot
+* rear-follow shot
+* front-facing backward tracking shot
+
+The camera should maintain a readable spatial relationship between the character and the destination.
+
+#### Diagonal movement
+
+Use:
+
+* diagonal tracking
+* curved tracking movement
+* three-quarter follow shot
+
+#### Sudden acceleration
+
+The camera may begin with a brief stable composition and then smoothly transition into tracking movement as the character accelerates.
+
+Character movement should remain physically continuous:
+
+**weight shift → body lean → first step → acceleration → sustained movement → deceleration → final position**
+
+Avoid describing a character as instantly appearing in a distant position unless the storyboard explicitly requires teleportation or supernatural movement.
+
+---
+
+### 4. Large Full-Body Movements and Pose Changes
+
+MiniMax H3 can support larger character actions, so large body movements do not need to be automatically simplified.
+
+However, complex movement should be described as a **continuous transformation of body posture**, not as several unrelated poses.
+
+For example, instead of:
+
+> He stands up, turns around, jumps, raises his arm, and runs away.
+
+Describe the physical transition:
+
+> The elderly man with messy white hair and a long white beard gradually pushes himself upright from the desk, shifting his weight from his arms to his feet. After reaching a stable standing posture, he turns his torso and shoulders toward the right side of the frame, then rotates his whole body in the same direction. His raised arm follows the turn naturally before he moves forward into a run.
+
+For major pose changes, clearly describe:
+
+* weight transfer
+* torso rotation
+* direction of movement
+* limb coordination
+* body orientation
+* final stable posture
+
+Large actions are allowed, but the motion must remain **continuous and readable**.
+
+---
+
+### 5. Multi-Stage Motion Is Allowed
+
+A shot may contain multiple motion beats when they belong to one continuous cinematic event.
+
+For example:
+
+**Character notices something → reacts → moves toward it → object responds → environment changes**
+
+This should be written as one coherent progression rather than artificially reducing the shot to only one action.
+
+However, avoid packing several unrelated actions into the same short shot.
+
+Each major beat should have enough screen time to be visually readable.
+
+A useful structure is:
+
+#### Beat 1 — Trigger
+
+The event that initiates the movement.
+
+#### Beat 2 — Primary Action
+
+The main character or object movement.
+
+#### Beat 3 — Response
+
+Environmental or secondary-object reaction.
+
+#### Beat 4 — Resolution
+
+The movement slows or completes.
+
+Not every shot requires all four beats, but complex storyboard actions should follow a clear temporal progression.
+
+---
+
+### 6. Camera Movement Must Respond to the Story Action
+
+Camera movement should have a cinematic purpose and should coordinate with the on-screen action.
+
+Do not describe camera movement independently from the characters.
+
+The camera may:
+
+* follow a moving character
+* reveal a destination
+* emphasize an object
+* reframe after a character changes position
+* move closer during emotional realization
+* pull back to reveal environmental scale
+* orbit slightly around a character during a major transformation
+* rise or descend to reveal spatial relationships
+
+For example:
+
+> As 小豆丁 moves toward the center of the courtyard, the camera tracks with him from the side. When he stops beneath the giant floating character, the lateral movement gradually slows, and the camera begins a gentle upward tilt, shifting the visual emphasis from the child to the enormous golden character above him.
+
+Camera movement should ideally follow:
+
+**establish → follow → reframe → settle**
+
+Avoid unnecessary camera direction changes unless the storyboard specifically requires a strong visual transition.
+
+---
+
+### 7. Use Camera Movement to Enhance Large Actions
+
+For powerful actions, transformations, magical events, or major environmental changes, the camera may participate actively in the visual event.
+
+Examples include:
+
+#### Character transformation
+
+Use:
+
+* slow push-in
+* subtle orbit
+* vertical tilt
+* gradual pull-back
+
+#### Character jumping or rising
+
+Use:
+
+* upward tracking
+* tilt-up
+* crane-like movement
+
+#### Object falling
+
+Use:
+
+* tilt-down
+* downward tracking
+
+#### Large environment reveal
+
+Use:
+
+* pull-back
+* rising camera
+* sweeping lateral movement
+* forward traversal
+
+#### Magical object appearing
+
+Use:
+
+* controlled push-in
+* reframing movement
+* gradual tilt toward the object
+
+The camera should enhance the scale and clarity of the action rather than moving randomly.
+
+---
+
+### 8. Environmental and Object Reactions Should Be Included
+
+The Motion Description should not focus only on characters.
+
+When appropriate, describe how the environment responds to the primary action.
+
+Possible reactions include:
+
+* dust lifting from footsteps
+* fabric moving with body motion
+* loose papers shifting in airflow
+* leaves reacting to wind
+* light spreading across surfaces
+* shadows changing as an object moves
+* particles being displaced
+* water rippling
+* doors opening
+* props being pushed or knocked aside
+
+These secondary movements should support the main action.
+
+Avoid adding excessive independent motion that competes with the primary subject.
+
+A useful hierarchy is:
+
+**primary action → secondary physical response → subtle environmental reaction**
+
+---
+
+### 9. Magical and Supernatural Motion
+
+For fantasy storyboard content, magical movement should still follow a visually understandable progression.
+
+Avoid:
+
+> The character suddenly becomes surrounded by magic.
+
+Prefer:
+
+> Golden particles begin gathering around the tip of the wand, initially appearing as sparse floating sparks. The particles gradually increase in density and spiral outward around the wand. As the glowing spiral expands, the light spreads across the nearby floor and walls, and the surrounding shadows shift accordingly.
+
+Describe magical events through:
+
+* point of origin
+* expansion direction
+* motion path
+* acceleration or deceleration
+* interaction with the environment
+* final stable configuration
+
+For transformations:
+
+**appearance → gathering → expansion → transformation → stabilization**
+
+---
+
+### 10. Character Interaction Must Preserve Spatial Logic
+
+When multiple characters interact, clearly maintain their relative positions and facing directions.
+
+Describe:
+
+* who is on the left/right/foreground/background
+* who approaches whom
+* who turns toward whom
+* who remains in frame
+* how the distance between characters changes
+
+For example:
+
+> 小豆丁, positioned on the left side of the frame, turns his upper body toward 字博士 on the right. He takes several steps forward, reducing the distance between them, while 字博士 remains beside the wooden desk and turns his head toward the approaching child.
+
+Do not allow characters to change positions without describing the movement that causes the change.
+
+---
+
+### 11. Maintain Character Continuity Across the Entire Motion
+
+At least one character must remain visually continuous from the first frame to the last frame.
+
+The Motion Description should clearly preserve that character's spatial and visual identity throughout the shot.
+
+If the shot contains a major environmental transition or introduces new characters, maintain at least one existing character as the visual anchor.
+
+The common character may:
+
+* remain stationary
+* move through the environment
+* be followed by the camera
+* remain visible in the foreground or background
+* serve as the observer of the event
+
+When possible, use the persistent character as the compositional anchor during major transitions.
+
+---
+
+### 12. Describe Motion in Temporal Order
+
+The Motion Description must follow the actual chronological order of events.
+
+Use a natural progression such as:
+
+> Initially → then → as → while → afterward → finally
+
+Do not describe the final result first and then explain how it happened.
+
+The reader should be able to reconstruct the entire shot as a continuous timeline.
+
+---
+
+### 13. Avoid Motion Overload
+
+MiniMax H3 supports richer motion, but complexity should still serve the shot.
+
+Do not add movement merely to make the shot look dynamic.
+
+A shot should usually have:
+
+* **one primary motion**
+* **one supporting motion**
+* optional environmental response
+
+For complex shots, several beats are allowed when they form a single connected event.
+
+Avoid:
+
+> running + jumping + spinning + camera orbit + zoom + explosion + environmental transformation
+
+unless the storyboard explicitly requires such a sequence and the duration is sufficient.
+
+---
+
+### 14. Motion Completion Is Required
+
+The final part of the Motion Description should guide the shot toward a stable final composition.
+
+Important actions should not simply stop abruptly.
+
+Describe:
+
+* deceleration
+* completion of body movement
+* object reaching its final position
+* camera easing into its final framing
+* environmental effects settling into the final state
+
+For example:
+
+> As 小豆丁 reaches the center of the courtyard, his running pace slows and he comes to a complete stop. The camera continues moving slightly forward before easing to a stable position, holding him beneath the floating golden character.
+
+The final motion should naturally lead into the Last Frame Description.
+
+---
+
+### 15. Visual Richness Requirement
+
+The Motion Description should be more visually expressive than a simple action summary.
+
+When supported by the storyboard, include meaningful details about:
+
+* movement direction
+* acceleration and deceleration
+* body mechanics
+* camera coordination
+* foreground/background parallax
+* object reactions
+* environmental movement
+* lighting changes
+* composition changes
+
+However, every described movement must remain physically and visually observable within the shot.
+
+Do not describe invisible details hidden by:
+
+* framing
+* distance
+* occlusion
+* darkness
+* camera angle
+
+===============
 
 [Guidelines]
-- Ensure all output values (except keys) match the language used in the script.
+- Ensure all output values (except keys) used in the script **使用中文**..
 - Ensure the first and last frame descriptions are pure "snapshots," containing no ongoing actions (e.g., "He is about to stand up" is unacceptable; it should be "He is sitting on the chair, leaning slightly forward").
 - In the first frame and last frame descriptions, you should use the original character names/identifiers and the characters' visible characteristics to refer to them. For example, "Alice is walking" is unacceptable; it should be "Alice (short hair, wearing a green dress) is walking"
 - In the motion description, you must clearly distinguish between camera movement and on-screen movement. Use professional cinematic terminology (e.g., dolly shot, pan, zoom, etc.) as precisely as possible to describe camera movement.
@@ -1072,15 +1551,47 @@ class StoryboardArtist:
         self,
         chat_model: BaseChatModel,
     ):
-        self.chat_model = chat_model
-        self.secondary_chat_model = create_chat_model(
+        # self.chat_model = chat_model
+        self.chat_model = create_chat_model(
             model_provider="qwen",
             model=model_name.get("secondary", "deepseek-v4-flash-0731"),
         )
 
-
     @retry(stop=stop_after_attempt(3), after=after_func)
     async def design_storyboard(
+        self,
+        script: str,
+        characters: List[CharacterInScene],
+        user_requirement: Optional[str] = None,
+        retry_timeout: int = 600,
+    ) -> List[ShotBriefDescription]:
+
+        class StoryboardResponse(BaseModel):
+            storyboard: List[ShotBriefDescription] = Field(
+                description="A complete storyboard of the scene, including the visual and audio description of each shot.",
+            )
+
+        script_str = script.strip()
+        characters_str = "\n".join([f"Character {index}: {char}" for index, char in enumerate(characters)])
+        user_requirement_str = user_requirement.strip() if user_requirement else ""
+
+        parser = PydanticOutputParser(pydantic_object=StoryboardResponse)
+        messages = [
+            ('system', system_prompt_template_design_storyboard.format(format_instructions=parser.get_format_instructions())),
+            ('human', human_prompt_template_design_storyboard.format(script_str=script_str, characters_str=characters_str, user_requirement_str=user_requirement_str)),
+        ]
+        chain = self.chat_model | parser
+        response: StoryboardResponse = await asyncio.wait_for(
+            chain.ainvoke(messages),
+            timeout=retry_timeout,
+        )
+        storyboard = response.storyboard
+
+        return storyboard
+
+
+    @retry(stop=stop_after_attempt(3), after=after_func)
+    async def design_storyboard_with_environment(
         self,
         script: str,
         characters: List[CharacterInScene],
@@ -1088,6 +1599,7 @@ class StoryboardArtist:
         user_requirement: Optional[str] = None,
         retry_timeout: int = 600,
     ) -> List[ShotBriefDescription]:
+        # 有环境版本
 
         class StoryboardResponse(BaseModel):
             storyboard: List[ShotBriefDescription] = Field(
@@ -1166,8 +1678,8 @@ class StoryboardArtist:
 
         parser = PydanticOutputParser(pydantic_object=StoryboardResponse)
         messages = [
-            ('system', system_prompt_template_design_storyboard.format(format_instructions=parser.get_format_instructions())),
-            ('human', human_prompt_template_design_storyboard.format(
+            ('system', system_prompt_template_design_storyboard_with_environment.format(format_instructions=parser.get_format_instructions())),
+            ('human', human_prompt_template_design_storyboard_with_environment.format(
                 script_str=script_str,
                 characters_str=characters_str,
                 user_requirement_str=user_requirement_str,
@@ -1204,7 +1716,7 @@ class StoryboardArtist:
                 ('human', human_prompt_template_decompose_visual_description),
             ]
         )
-        chain = prompt_template | self.secondary_chat_model | parser
+        chain = prompt_template | self.chat_model | parser
 
         visual_desc = shot_brief_desc.visual_desc.strip()
 
