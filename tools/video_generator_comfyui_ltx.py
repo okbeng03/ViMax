@@ -323,7 +323,8 @@ class VideoGeneratorComfyUILTX:
         duration: int = 5,
         use_xianxia_lora: bool = False,
         is_small_people: bool = False,
-    ) -> VideoOutput:
+        enable_schedule_mode: Optional[bool] = False,
+    ) -> VideoOutput | None:
         """
         生成单个视频
         
@@ -403,11 +404,26 @@ class VideoGeneratorComfyUILTX:
                 is_small_people=is_small_people,
             )
 
+        w_path = mutil_frame_workflow_path if len_reference_image_paths >= 2 else first_frame_workflow_path
+        o_node_ids = mutil_frame_output_node_ids if len_reference_image_paths >= 2 else first_frame_output_node_ids
+
+        ready = await runner.prepare(
+            workflow_path=w_path,
+            workflow=workflow,
+            output_node_ids=o_node_ids,
+            ui_workflow=ui_workflow,
+            enable_schedule_mode=enable_schedule_mode,
+            type="video",
+        )
+
+        if not ready:
+            return
+
         # 执行工作流
         outputs = await runner.run(
-            workflow_path=mutil_frame_workflow_path if len_reference_image_paths >= 2 else first_frame_workflow_path,
+            workflow_path=w_path,
             workflow=workflow,
-            output_node_ids=mutil_frame_output_node_ids if len_reference_image_paths >= 2 else first_frame_output_node_ids,
+            output_node_ids=o_node_ids,
             ui_workflow=ui_workflow,
             timeout=3000,  # 10 分钟超时
         )

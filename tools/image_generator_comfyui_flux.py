@@ -288,8 +288,9 @@ class ImageGeneratorComfyUIFlux:
         reference_image_paths: List[str] = None,
         size: Optional[str] = "2048x2048",
         workflow_name: Optional[str] = None,
+        enable_schedule_mode: Optional[bool] = False,
         **kwargs,
-    ) -> ImageOutput:
+    ) -> ImageOutput | None:
         """
         生成单张图片
         
@@ -334,6 +335,18 @@ class ImageGeneratorComfyUIFlux:
                 workflow_path = text_to_image_workflow_path
                 output_node_ids = text_to_image_output_node_ids
         # print("========================\n", json.dumps(workflow, indent=4), "\n========================")
+
+        ready = await runner.prepare(
+            workflow_path=workflow_path,
+            workflow=workflow,
+            output_node_ids=output_node_ids,
+            ui_workflow=ui_workflow,
+            enable_schedule_mode=enable_schedule_mode,
+        )
+
+        if not ready:
+            return
+
         # 执行工作流
         outputs = await runner.run(
             workflow_path=workflow_path,
