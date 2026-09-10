@@ -4,6 +4,7 @@ import subprocess
 from agents import Screenwriter, CharacterExtractor, CharacterPortraitsGenerator, VoiceDesigner
 from agents.transition_agent import TransitionDirector, TransFragment
 from pipelines.script2video_pipeline import Script2VideoPipeline
+from pipelines.script2video_pipeline_v2 import Script2VideoPipelineV2
 from pipelines.hanzi_pipeline import HanziPipeline
 from interfaces import CharacterInScene, ShotDescription
 from typing import List, Dict, Optional, Tuple
@@ -566,6 +567,31 @@ class Idea2VideoPipeline:
 
         all_video_paths = []
 
+        if self.interrupt_step and self.interrupt_step.startswith("intro_"):
+            intro_working_dir = os.path.join(self.working_dir, "intro")
+            intro_script2video_pipeline = Script2VideoPipelineV2(
+                chat_model=self.chat_model,
+                image_generator=self.image_generator,
+                video_generator=self.video_generator,
+                audio_generator=self.audio_generator,
+                working_dir=intro_working_dir,
+                interrupt_step=self.interrupt_step,
+                comfyui_enable=self.comfyui_enable,
+            )
+            # 取 working_dir/intro.md 作为脚本
+            intro_script_path = os.path.join(intro_working_dir, "intro.md")
+            with open(intro_script_path, "r", encoding="utf-8") as f:
+                intro_script = f.read()
+
+            intro_final_video_path = await intro_script2video_pipeline(
+                script=intro_script,
+                user_requirement=user_requirement,
+                style=style,
+                characters=characters,
+                character_portraits_registry=character_portraits_registry,
+            )
+            return
+
         if self.mode == "gacha":
             # 抽卡模式。只需要处理对应场景
             scene_idx = self.gacha_config["scene"]
@@ -591,7 +617,7 @@ class Idea2VideoPipeline:
         else:
             # 生成场景视频，拆解成镜头再合成
             for idx, scene_script in enumerate(scene_scripts):
-                # if idx == 4:
+                # if idx == 1:
                 #     continue
 
                 scene_working_dir = os.path.join(self.working_dir, f"scene_{idx}")
