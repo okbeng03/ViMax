@@ -173,7 +173,7 @@ You will receive a story within <STORY> and </STORY> tags and a user requirement
 {format_instructions}
 
 [Guidelines]
-- The language of output in values should be same as the input story.
+- The language of output in values 必须是中文. 
 - Scene Division Principles: Each scene must be based on the same time and **the same single, indivisible location**. Start a new scene when the time or location changes.  The location must be a specific, well-defined space (e.g., "by the creek on the sand," "at the village gate," "inside the tent"). Composite locations like "creekside sand and small hill" or "ancient village and marketplace" are strictly forbidden. If characters move from one distinct location to another, you must split them into separate scenes.
 - Scene heading examples:
   ✅ SCENE 1: EXT. CREEKSIDE SAND - DAY
