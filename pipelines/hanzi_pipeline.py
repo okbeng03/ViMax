@@ -287,7 +287,7 @@ class HanziPipeline:
         # header_row = rows[0]
         # header_cells = header_row.find_all(['th', 'td'])
         # col_type_map = {}  # col_index -> type_name
-        
+
         for idx, cell in enumerate(items):
             cell_text = cell.find('span', class_='glyph-evolution__label').get_text(strip=True)
             glyph_type = ""
@@ -297,6 +297,8 @@ class HanziPipeline:
                 glyph_type = '甲骨文'
             elif cell_text in ['金文']:
                 glyph_type = '金文'
+            elif cell_text in ['说文']:
+                glyph_type = '说文'
             elif cell_text in ['楚系簡帛', '楚系簡帛', '楚簡', '楚簡文字']:
                 glyph_type = '楚系简帛'
             elif cell_text in ['隶书']:
@@ -512,8 +514,8 @@ class HanziPipeline:
             shutil.move(temp_png_path, png_path)
         
         # 清理临时文件
-        if os.path.exists(temp_png_path):
-            os.remove(temp_png_path)
+        # if os.path.exists(temp_png_path):
+        #     os.remove(temp_png_path)
     
     # def _convert_transparent_black_to_white_bg(self, input_path: str, output_path: str):
     #     """
@@ -717,7 +719,8 @@ class HanziPipeline:
                         prompt=prompt,
                         reference_image_paths=[from_hanzi_path, to_hanzi_path],
                         duration=5,
-                        aspect_ratio="1:1"
+                        aspect_ratio="1:1",
+                        enable_schedule_mode=True,
                     )
                 else:
                     prompt = f"这是一个汉字不同时期字形的演变动画，是物理轮廓的平滑形变，从图片1平滑形变过渡到图片2，禁止任何逐笔书写的顺序感，整个视频保持白色米格背景，禁止改变白色米格背景\n开头1s保持首帧静止，1s后，{transition.description}，整个变化过程持续到4s，然后保持静止。没有背景音乐"
@@ -725,16 +728,20 @@ class HanziPipeline:
                         prompt=prompt,
                         reference_image_paths=[from_hanzi_path, to_hanzi_path],
                         duration=5,
-                        aspect_ratio="1:1"
+                        aspect_ratio="1:1",
+                        enable_schedule_mode=True,
                     )
                 
-                # 保存原始视频
-                # raw_video_path = os.path.join(evolution_dir, f"{from_type}_to_{to_type}_raw.mp4")
-                video_output.save(transition_video_path)
-                subprocess.run(["ffmpeg", "-i", transition_video_path, "-an", "-c:v", "copy", transition_video_an_path], check=True, capture_output=True)
-                
-                video_paths.append(transition_video_an_path)
-                print(f"✅ Generated transition video {from_type} to {to_type}, saved to {transition_video_an_path}")
+                if video_output:
+                    # 保存原始视频
+                    # raw_video_path = os.path.join(evolution_dir, f"{from_type}_to_{to_type}_raw.mp4")
+                    video_output.save(transition_video_path)
+                    subprocess.run(["ffmpeg", "-i", transition_video_path, "-an", "-c:v", "copy", transition_video_an_path], check=True, capture_output=True)
+                    
+                    video_paths.append(transition_video_an_path)
+                    print(f"✅ Generated transition video {from_type} to {to_type}, saved to {transition_video_an_path}")
+                else:
+                    print(f"[COMFYUI SCHEDULE DETAIL]:: file_path: {transition_video_path}")
                 
             except Exception as e:
                 logger.error(f"Failed to generate transition video {from_type} to {to_type}: {e}")
@@ -785,7 +792,10 @@ class HanziPipeline:
         
         for idx, glyph_type in enumerate(glyph_types):
             # 生成旁白音频，prompt 就是字形名称
-            audio_path = os.path.join(audio_dir, f"narration_{idx}.flac")
+            audio_path = os.path.join(assets_dir, f"{glyph_type}.flac")
+
+            if not os.path.exists(audio_path):
+                audio_path = os.path.join(audio_dir, f"narration_{idx}.flac")
             
             if not os.path.exists(audio_path):
                 print(f"🎙️ Generating narration for {glyph_type}...")
@@ -1240,8 +1250,14 @@ class HanziPipeline:
         
         for glyph_type, png_path in glyph_png_paths.items():
             if os.path.exists(png_path):
+                # png_path 替换成 temp_png_path = png_path + ".temp.png"
+                
+                temp_png_path = png_path + ".temp.png"
                 dest_path = os.path.join(char_portrait_dir, f"{glyph_type}.png")
-                shutil.copy(png_path, dest_path)
+
+                if not os.path.exists(dest_path):
+                    shutil.copy(temp_png_path, dest_path)
+
                 registry[f"{target_hanzi}字"][glyph_type] = {
                     "path": dest_path,
                     "description": f"{glyph_type} of the character {target_hanzi}。{glyph_type_descriptions.get(glyph_type, '')}"
