@@ -24,7 +24,10 @@ from typing import Any, List
 import aiohttp
 from websockets.sync.client import connect as ws_connect
 from utils.rate_limiter import RateLimiter
-from configs.config import working_dir
+import configs.config as _config
+
+working_dir = getattr(_config, "working_dir")
+mode = getattr(_config, "mode", "run")
 
 logger = logging.getLogger(__name__)
 
@@ -192,6 +195,39 @@ class ComfyUIWorkflowRunner:
                     result = await response.json()
                     return result["name"]
 
+    async def prepare(
+        self,
+        workflow_path: str,
+        workflow: dict[str, Any],
+        output_node_ids: List[int | str],
+        ui_workflow: dict[str, Any] | None = None,
+        enable_schedule_mode: bool = False,
+        type: str = "image"
+    ):
+        """
+        准备工作流运行器
+        1. 保存工作流
+        2. 如果是调度器模式，格式化输出日志
+        """
+
+        prompt_id = uuid.uuid4().hex[:8]
+        workflow_name = os.path.splitext(os.path.basename(workflow_path))[0] if workflow_path else ""
+        workflow_path = os.path.join(f"{working_dir}/workflows", f"{workflow_name}_{prompt_id}.json")
+        
+        with open(workflow_path, 'w', encoding='utf-8') as f:
+            f.write(json.dumps(workflow, ensure_ascii=False, indent=4))
+            
+        if ui_workflow:
+            with open(os.path.join(f"{working_dir}/workflows", f"{workflow_name}_{prompt_id}_ui.json"), 'w', encoding='utf-8') as f:
+                f.write(json.dumps(ui_workflow, ensure_ascii=False, indent=4))
+
+        if enable_schedule_mode and mode == "schedule":
+            # 调度模式
+            print(f"[COMFYUI SCHEDULE]:: prompt_id: {prompt_id}, type: {type}, workflow_name: {workflow_name}, workflow_path: {workflow_path}, output_ids: {output_node_ids[0]}")
+            return False
+
+        return True
+
     async def run(
         self,
         workflow_path: str,
@@ -321,15 +357,6 @@ class ComfyUIWorkflowRunner:
         workflow_start_time = time.time()
         prompt_id = await self._queue_prompt(task.workflow)
         logger.info(f"Comfyui Queued prompt: {prompt_id}. 开始时间: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(workflow_start_time))}")
-        workflow_name = os.path.splitext(os.path.basename(task.workflow_path))[0] if task.workflow_path else ""
-        workflow_path = os.path.join(f"{working_dir}/workflows", f"{workflow_name}_{prompt_id}.json")
-        
-        with open(workflow_path, 'w', encoding='utf-8') as f:
-            f.write(json.dumps(task.workflow, ensure_ascii=False, indent=4))
-            
-        if task.ui_workflow:
-            with open(os.path.join(f"{working_dir}/workflows", f"{workflow_name}_{prompt_id}_ui.json"), 'w', encoding='utf-8') as f:
-                f.write(json.dumps(task.ui_workflow, ensure_ascii=False, indent=4))
         
         # 等待执行完成，传入开始时间用于计算耗时
         outputs = await self._wait_for_outputs(prompt_id, task.timeout, workflow_start_time)
