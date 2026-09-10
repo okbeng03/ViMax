@@ -281,10 +281,11 @@ class ShotDescription(BaseModel):
 
     # audio
     audio_desc: str = Field(
-        description="A detailed description of the audio in the shot.",
+        description="A detailed description of the audio in the shot. Include Sound Effect & Speaker",
         examples=[
             "[Sound Effect] Ambient sound (supermarket background noise, shopping cart wheels rolling)",
             "[Speaker] Alice (Happy): Hello, how are you?",
+            "[Sound Effect] Ambient sound (supermarket background noise, shopping cart wheels rolling)[Speaker] Alice (Happy): Hello, how are you",
             None,
         ],
     )
