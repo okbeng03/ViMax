@@ -35,9 +35,9 @@ logger = logging.getLogger(__name__)
 base_workflow_path = "workflows/MiniMax_base.json"
 base_ui_workflow_path = "workflows/MiniMax_base_ui.json"
 base_output_node_ids = ["92"]
-# ref_workflow_path = "workflows/MiniMax_ref.json"
-# ref_ui_workflow_path = "workflows/MiniMax_ref_ui.json"
-# ref_output_node_ids = ["649"]
+ref_workflow_path = "workflows/MiniMax_ref.json"
+ref_ui_workflow_path = "workflows/MiniMax_ref_ui.json"
+ref_output_node_ids = ["92"]
 max_noise = 2**50 - 1
 aspect_ratio_map = {
     "1:1": '1:1 (Square)', 
@@ -152,7 +152,87 @@ class VideoGeneratorComfyUIMiniMax:
         
         return workflow, ui_workflow
     
-    
+    async def load_ref_workflow(
+        self, 
+        runner: ComfyUIWorkflowRunner,
+        prompt: str,
+        reference_image_paths: Optional[List[str]] = None,
+        resolution: Literal["480p", "720p", "1080p"] = "720p",
+        aspect_ratio: str = "16:9",
+        fps: Literal[16, 24] = 16,
+        duration: Literal[5, 10] = 5,
+        megapixels: float = 0.8,
+        step: int = 10,
+    ) -> dict[str, Any]:
+        """
+        加载参考工作流
+        """
+        
+        workflow = runner.load_workflow(ref_workflow_path)
+        workflow["138"]["inputs"]["value"] = first_frame_name = prompt
+        condition_node = workflow["136"]["inputs"]
+
+        resolution_selector = workflow["115"]["inputs"]
+        resolution_selector["aspect_ratio"] = aspect_ratio_map[aspect_ratio]
+        resolution_selector["megapixels"] = megapixels
+
+        noise_seed = random.randint(1, max_noise)
+        
+        workflow["92"]["inputs"]["filename_prefix"] = str(uuid.uuid4())
+        workflow["129"]["inputs"]["noise_seed"] = noise_seed
+        workflow["132"]["inputs"]["value"] = duration
+        workflow["124"]["inputs"]["steps"] = step
+            
+        # ui
+        ui_workflow = runner.load_workflow(ref_ui_workflow_path)
+        nodes = ui_workflow["nodes"]
+
+        prompt_node = next((node for node in nodes if node["id"] == 138), None)
+        prompt_node["widgets_values"][0] = prompt
+
+        resolution_selector_node = next((node for node in nodes if node["id"] == 115), None)
+        resolution_selector_node["widgets_values"][0] = aspect_ratio_map[aspect_ratio]
+        resolution_selector_node["widgets_values"][1] = megapixels
+
+        output_node = next((node for node in nodes if node["id"] == 92), None)
+        output_node["widgets_values"][0] = str(uuid.uuid4())
+
+        step_node = next((node for node in nodes if node["id"] == 124), None)
+        step_node["widgets_values"][1] = step
+
+        duration_node = next((node for node in nodes if node["id"] == 132), None)
+        duration_node["widgets_values"][0] = duration
+
+        ui_condition_node = next((node for node in nodes if node["id"] == 136), None)
+        condition_node_inputs = ui_condition_node["inputs"]
+
+        # 图片上传
+        image_node_ids = [137, 139, 141, 142, 143]
+        image_len = len(reference_image_paths)
+
+        for i in range(image_len):
+            image_path = await runner.upload_image(reference_image_paths[i])
+            image_node_id = image_node_ids[i]
+
+            workflow[str(image_node_id)]["inputs"]["image"] = image_path
+
+            image_node = next((node for node in nodes if node["id"] == image_node_id), None)
+            image_node["widgets_values"][0] = image_path
+
+        # 移除无图片节点
+        for i in range(image_len, 5):
+            image_node_id = image_node_ids[i]
+
+            workflow.pop(str(image_node_id), None)
+            condition_node.pop(f"ref_images.ref_image_{i}", None)
+
+            image_node = next((node for node in nodes if node["id"] == image_node_id), None)
+            image_node["mode"] = 4
+            image_link = next((link for link in condition_node_inputs if link["label"] == f"ref_images.ref_image_{i}"), None)
+            image_link["link"] = None
+
+        return workflow, ui_workflow
+
     async def generate_single_video(
         self,
         prompt: str,
@@ -163,7 +243,9 @@ class VideoGeneratorComfyUIMiniMax:
         aspect_ratio: str = "16:9",
         fps: int = 15,
         duration: int = 5,
-    ) -> VideoOutput:
+        enable_schedule_mode: Optional[bool] = False,
+        workflow_name: Optional[str] = 'base',
+    ) -> VideoOutput | None:
         """
         生成单个视频
         
@@ -210,30 +292,58 @@ class VideoGeneratorComfyUIMiniMax:
             # audio_name = await runner.upload_audio(audio_path)
             
         
-        if len(reference_image_paths) > 9:
+        if len(reference_image_paths) > 5:
             logger.warning("Too many reference images, only the first 9 will be used")
-            reference_image_paths = reference_image_paths[:9]
+            reference_image_paths = reference_image_paths[:5]
         
         len_reference_image_paths = len(reference_image_paths)
         
-        logger.info("============Using MiniMax base workflow============")
-        workflow, ui_workflow = await self.load_base_workflow(
-            runner=runner,
-            prompt=prompt,
-            reference_image_paths=reference_image_paths,
-            resolution=resolution,
-            aspect_ratio=aspect_ratio,
-            fps=fps,
-            duration=duration,
+        if workflow_name == 'base':
+            logger.info("============Using MiniMax base workflow============")
+            workflow, ui_workflow = await self.load_base_workflow(
+                runner=runner,
+                prompt=prompt,
+                reference_image_paths=reference_image_paths,
+                resolution=resolution,
+                aspect_ratio=aspect_ratio,
+                fps=fps,
+                duration=duration,
+            )
+            workflow_path = base_workflow_path
+            output_node_ids = base_output_node_ids
+        else:
+            logger.info("============Using MiniMax ref workflow============")
+            workflow, ui_workflow = await self.load_ref_workflow(
+                runner=runner,
+                prompt=prompt,
+                reference_image_paths=reference_image_paths,
+                resolution=resolution,
+                aspect_ratio=aspect_ratio,
+                fps=fps,
+                duration=duration,
+            )
+            workflow_path = ref_workflow_path
+            output_node_ids = ref_output_node_ids
+
+        ready = await runner.prepare(
+            workflow_path=workflow_path,
+            workflow=workflow,
+            output_node_ids=output_node_ids,
+            ui_workflow=ui_workflow,
+            enable_schedule_mode=enable_schedule_mode,
+            type="video",
         )
+
+        if not ready:
+            return
 
         # 执行工作流
         outputs = await runner.run(
-            workflow_path=base_workflow_path,
+            workflow_path=workflow_path,
             workflow=workflow,
-            output_node_ids=base_output_node_ids,
+            output_node_ids=output_node_ids,
             ui_workflow=ui_workflow,
-            timeout=2000,  # 10 分钟超时
+            timeout=3000,  # 10 分钟超时
         )
         
         # 提取输出路径
