@@ -55,8 +55,8 @@ PROVIDER_PRESETS: Dict[str, Dict[str, Any]] = {
             "qwen3.7-max-preview",
             "qwen3.6-flash-2026-04-16",
             "qwen3.6-plus-2026-04-02",
-            "deepseek-v4-flash",
-            "deepseek-v4-flash",
+            "qwen3.6-flash",
+            "qwen3.6-flash",
             "qwen3.7-plus-2026-05-26"
         ],
         "temperature_range": (0.0, 1.0),
@@ -75,6 +75,13 @@ def resolve_chat_model_config(init_args: Dict[str, Any]) -> Dict[str, Any]:
     * ``api_key`` sourced from the environment when not already set
     * ``model`` defaulted to the preset's default model when not already set
     * ``temperature`` clamped to the provider's supported range
+    * ``enable_thinking`` (bool) translated into
+      ``model_kwargs={"extra_body": {"enable_thinking": ...}}`` so the flag
+      is sent inside the OpenAI-compatible request body (used e.g. by the
+      DashScope/Qwen API to turn off the reasoning chain)
+
+    ``qwen3`` reasoning models default to ``enable_thinking=False`` (no
+    chain-of-thought) unless the caller passes ``enable_thinking=True``.
 
     For unknown providers the dict is returned unchanged.
     """
@@ -82,6 +89,28 @@ def resolve_chat_model_config(init_args: Dict[str, Any]) -> Dict[str, Any]:
     provider = args.get("model_provider", "openai")
 
     preset = PROVIDER_PRESETS.get(provider)
+
+    # --- enable_thinking -> model_kwargs.extra_body ---------------------
+    # DashScope/Qwen reasoning models (qwen3*) emit a chain-of-thought by
+    # default; disable it unless the caller explicitly enables it.
+    enable_thinking = args.pop("enable_thinking", None)
+    if enable_thinking is None:
+        model_name_for_default = args.get("model") or (
+            preset.get("default_model") if preset else None
+        ) or ""
+        if provider == "qwen" and str(model_name_for_default).startswith("qwen3.8"):
+            enable_thinking = False
+    if enable_thinking is not None:
+        model_kwargs = dict(args.get("model_kwargs") or {})
+        extra_body = dict(model_kwargs.get("extra_body") or {})
+        extra_body["enable_thinking"] = enable_thinking
+        model_kwargs["extra_body"] = extra_body
+        args["model_kwargs"] = model_kwargs
+        logger.info(
+            "Provider %s: enable_thinking=%s for model %s",
+            provider, enable_thinking, args.get("model"),
+        )
+
     if preset is None:
         return args
 
