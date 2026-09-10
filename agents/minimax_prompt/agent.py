@@ -167,6 +167,52 @@ class PromptConverter:
 
         return ShotDescriptionWithDialogues(prompt=prompt, shot_duration=shot_description.shot_duration)
             
+    @log_agent("MiniMaxPromptBaseConverter")
+    async def base_convert(
+        self,
+        style: str,
+        shot_description: StoryboardShot,
+        characters: List[CharacterInScene] = [],
+        retry_timeout: int = 300,
+    ) -> ShotDescriptionWithDialogues:
+        """
+        转换 prompt 为 minimax h3 base 格式
+        
+        Args:
+            style: 风格
+            shot_description: 镜头描述
+            characters: 角色列表
+        """
+        parser = PydanticOutputParser(pydantic_object=ShotDescriptionWithDialogues)
+        characters = [characters[idx] for idx in shot_description.characters]
+
+        characters_str = "\n".join([f"{character.identifier_in_scene}: {character.static_features}{character.dynamic_features}" for character in characters])
+        task_type = "FL2VA"
+        frame_description = f"first frame description: {shot_description.first_frame_description}"
+        frame_description += f"\nlast frame description: {shot_description.final_frame_description}"
+
+        messages = [
+            SystemMessage(content=base_system_prompt),
+            HumanMessage(content=base_user_prompt.format(
+                task_type=task_type,
+                style=style,
+                frame_description=frame_description,
+                motion_description=shot_description.motion_description or "(No motion description)",
+                audio_description=shot_description.audio_desc,
+                shot_duration=shot_description.duration,
+                character_list=characters_str
+            )),
+        ]
+        
+        chain = self.chat_model
+        result = await asyncio.wait_for(
+            chain.ainvoke(messages),
+            timeout=retry_timeout,
+        )
+
+        prompt = _fix_english_dialogues(result.content, shot_description.audio_desc)
+
+        return ShotDescriptionWithDialogues(prompt=prompt, shot_duration=shot_description.duration)
 
     @log_agent("MiniMaxRefPromptConverter")
     async def ref_convert(
