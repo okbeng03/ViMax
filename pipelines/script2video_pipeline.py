@@ -311,8 +311,13 @@ class Script2VideoPipeline:
                     print(f"🎬 Starting concatenating story video...")
                     video_clips = []
                     for idx, shot_description in enumerate(shot_descriptions):
+                        shot_video_path = os.path.join(self.working_dir, "shots", f"{shot_description.idx}", "video.mp4")
+
+                        if not os.path.exists(shot_video_path):
+                            return
+
                         video_clips.append(
-                            VideoFileClip(os.path.join(self.working_dir, "shots", f"{shot_description.idx}", "video.mp4"), audio=True)
+                            VideoFileClip(shot_video_path, audio=True)
                         )
                         if idx < len(shot_transitions) and shot_transitions[idx] is not None:
                             trans_path, _ = shot_transitions[idx]
@@ -349,7 +354,7 @@ class Script2VideoPipeline:
 
                 if has_audio:
                     # 视频有音频，混合对话和旁白
-                    # normalize=0 不做音量归一化，两轨都保持原始音量（极端叠加时可能削波）
+                    # # normalize=0 不做音量归一化，两轨都保持原始音量（极端叠加时可能削波）
                     subprocess.run([
                         "ffmpeg", "-y", "-i", story_video_path, "-i", narration_audio_path,
                         "-filter_complex", "[0:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[dialogue];[1:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[narration];[dialogue][narration]amix=inputs=2:duration=first:normalize=0[mixed]",
@@ -357,6 +362,14 @@ class Script2VideoPipeline:
                         "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
                         final_video_path
                     ], check=True, capture_output=True)
+                    # 保持旁白和对话音量一致
+                    # subprocess.run([
+                    #     "ffmpeg", "-y", "-i", story_video_path, "-i", narration_audio_path,
+                    #     "-filter_complex", "[1:a]volume=1.0[narration];[0:a]volume=1.0[dialogue];[dialogue][narration]amix=inputs=2:duration=first[mixed];[mixed]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[out]",
+                    #     "-map", "0:v", "-map", "[out]",
+                    #     "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
+                    #     final_video_path
+                    # ], check=True, capture_output=True)
                 else:
                     # 视频无音频，直接添加旁白
                     subprocess.run([
@@ -537,6 +550,12 @@ class Script2VideoPipeline:
         if shot_description.variation_type in ["medium", "large"]:
             frame_paths.append(os.path.join(self.working_dir, "shots", f"{shot_description.idx}", "last_frame.png"))
 
+        if self.comfyui_enable:
+            for frame_path in frame_paths:
+                if not os.path.exists(frame_path):
+                    # raise FileNotFoundError(f"Frame {frame_path} not found!")
+                    return
+
         print(f"🎬 Starting video generation for shot {shot_description.idx}...")
         
         # 生成融入音效的场景视觉描述和对话列表。对话列表后续做旁白的时候需要
@@ -628,6 +647,7 @@ class Script2VideoPipeline:
                     reference_image_paths=frame_paths,
                     audio_path=dialogue_audio_path,
                     duration=int(shot_description.shot_duration or 5.0),
+                    enable_schedule_mode=True,
                 )
             else:
                 video_output = await self.video_generator.generate_single_video(
@@ -637,25 +657,30 @@ class Script2VideoPipeline:
                     duration=int(shot_description.shot_duration or 5.0),
                     use_xianxia_lora=shot_description_with_dialogues.use_xianxia_lora,
                     is_small_people=shot_description_with_dialogues.is_small_people,
+                    enable_schedule_mode=True,
                 )
 
-            # 后续统一成 1680
-            if shot_description_with_dialogues.is_small_people:
-                self._scale_video(video_output, video_path)
+            if video_output:
+                # 后续统一成 1680
+                if shot_description_with_dialogues.is_small_people:
+                    self._scale_video(video_output, video_path)
+                else:
+                    video_output.save(video_path)
+
+                if shot_description.variation_type == "small":
+                    # 小镜头，提取最后一帧
+                    last_frame_path = os.path.join(self.working_dir, "shots", f"{shot_description.idx}", "last_frame.png")
+
+                    if os.path.exists(video_path):
+                        subprocess.run([
+                            "ffmpeg", "-y", "-sseof", "-1", "-i", video_path,
+                            "-update", "1", "-q:v", "1", last_frame_path,
+                        ], check=True, capture_output=True)
+
+                print(f"☑️ Generated video for shot {shot_description.idx}, saved to {video_path}.")
             else:
-                video_output.save(video_path)
-
-            if shot_description.variation_type == "small":
-                # 小镜头，提取最后一帧
-                last_frame_path = os.path.join(self.working_dir, "shots", f"{shot_description.idx}", "last_frame.png")
-
-                if os.path.exists(video_path):
-                    subprocess.run([
-                        "ffmpeg", "-y", "-sseof", "-1", "-i", video_path,
-                        "-update", "1", "-q:v", "1", last_frame_path,
-                    ], check=True, capture_output=True)
-
-            print(f"☑️ Generated video for shot {shot_description.idx}, saved to {video_path}.")
+                if self.comfyui_enable:
+                    print(f"[COMFYUI SCHEDULE DETAIL]:: file_path: {video_path}")
 
     async def generate_frame_for_single_shot(
         self,
@@ -713,7 +738,8 @@ class Script2VideoPipeline:
                 frame_type=frame_type,
                 frame_desc=frame_desc,
                 available_image_path_and_text_pairs=available_image_path_and_text_pairs,
-                style=style
+                style=style,
+                frame_image_path=frame_image_path,
             )
 
             if frame_image:
@@ -731,7 +757,8 @@ class Script2VideoPipeline:
         frame_desc: str,
         available_image_path_and_text_pairs: List[Tuple[str, str]],
         style: str,
-    ) -> ImageOutput:
+        frame_image_path: str = "",
+    ) -> ImageOutput | None:
         """
         生成镜头图片
         """
@@ -785,14 +812,22 @@ class Script2VideoPipeline:
                     if frame_index is not None:
                         await self.frame_events[frame_index][ref_frame_type].wait()
 
-        frame_image: ImageOutput = await self.image_generator.generate_single_image(
+        # 检查 reference_image_paths 是否都存在，不存在就返回
+        for reference_image_path in reference_image_paths:
+            if not os.path.exists(reference_image_path):
+                return
+
+        frame_image: ImageOutput | None = await self.image_generator.generate_single_image(
             prompt=prompt,
             reference_image_paths=reference_image_paths,
             size="2560x1440",
+            enable_schedule_mode=True
         )
         
+        if not frame_image and self.comfyui_enable:
+            print(f"[COMFYUI SCHEDULE DETAIL]:: file_path: {frame_image_path}")
+
         # TODO:: 评估、反馈、循环
-        
         
         return frame_image
 
@@ -977,9 +1012,14 @@ class Script2VideoPipeline:
                 master_image: ImageOutput = await self.image_generator.generate_single_image(
                     prompt=master_prompt,
                     size="2560x1440",
+                    enable_schedule_mode=True
                 )
-                master_image.save(master_image_path)
-                print(f"✅ Master environment image saved to {master_image_path}.")
+
+                if master_image:
+                    master_image.save(master_image_path)
+                    print(f"✅ Master environment image saved to {master_image_path}.")
+                else:
+                    print(f"[COMFYUI SCHEDULE DETAIL]:: file_path: {master_image_path}")
 
         # 2. 基于母图生成各机位图
         camera_image_map: Dict[str, str] = {}
@@ -1023,13 +1063,21 @@ class Script2VideoPipeline:
 
             # edit_prompt = f"style: {style}\n{camera_coverage.qwen_edit_camera_prompt}" if style else camera_coverage.qwen_edit_camera_prompt
             print(f"📷 Generating camera image for {camera_coverage.camera_id} ({camera_coverage.camera_name})...")
-            cam_image: ImageOutput = await self.image_generator.generate_single_image(
-                prompt=camera_coverage.qwen_edit_camera_prompt,
-                reference_image_paths=[master_image_path, master_image_path],
-                size="2560x1440",
-                workflow_name="qwen_edit_camera",
-            )
-            cam_image.save(cam_image_path)
+
+            if os.path.exists(master_image_path):
+                cam_image: ImageOutput = await self.image_generator.generate_single_image(
+                    prompt=camera_coverage.qwen_edit_camera_prompt,
+                    reference_image_paths=[master_image_path, master_image_path],
+                    size="2560x1440",
+                    workflow_name="qwen_edit_camera",
+                    enable_schedule_mode=True
+                )
+
+                if cam_image:
+                    cam_image.save(cam_image_path)
+                else:
+                    print(f"[COMFYUI SCHEDULE DETAIL]:: file_path: {cam_image_path}")
+
 
         return cam_image_path
 
@@ -1048,7 +1096,7 @@ class Script2VideoPipeline:
             print(f"🚀 Loaded {len(storyboard)} shot brief descriptions from existing file.")
         else:
             print(f"🔍 Designing storyboard...")
-            storyboard = await self.storyboard_artist.design_storyboard(
+            storyboard = await self.storyboard_artist.design_storyboard_with_environment(
                 script=script,
                 characters=characters,
                 environment=environment,
