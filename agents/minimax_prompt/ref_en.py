@@ -186,7 +186,27 @@ Video-structure entry:
 <Video 1> (cut and pacing structure): weak_reference - ...
 ```
 
-### 4.2 Audio
+### 4.2 Subject Identity Consistency and Duplicate Prevention
+
+When any `<subject N>` defined in the character or subject list refers to, matches, or clearly corresponds to an entity already visible in `frame_description`, especially an entity described in `first_frame`, they MUST be treated as the exact same physical entity.
+
+Do not introduce a second copy of that entity. Do not create duplicate characters, cloned subjects, twins, reflections behaving as independent subjects, overlapping copies, ghosted duplicates, or repeated instances of the same character unless the user's original input explicitly requires multiple identical entities.
+
+The subject definition and the first-frame entity description must be merged into one continuous identity:
+
+- `<subject N>` is the entity already present in the first frame.
+- The entity's appearance, clothing, age, body proportions, position, orientation, and spatial role must remain consistent with the first-frame reference unless the motion explicitly changes them.
+- If `<subject N>` is mentioned as entering, moving, acting, speaking, or interacting after the opening frame, that action must be performed by the already-existing entity rather than by a newly generated duplicate.
+- Never describe `<subject N>` as appearing separately if the same entity is already visible in the first frame.
+- When resolving ambiguity between a subject definition and a first-frame entity, prioritize identity continuity: assume they are the same entity whenever their descriptions indicate they refer to the same character or object.
+
+For image-reference tasks, always perform an implicit entity reconciliation before writing the timeline:
+
+**first-frame entity → matching `<subject N>` → one continuous entity throughout the video**
+
+The final prompt must preserve one-to-one entity correspondence and must not cause subject duplication, cloning, double exposure, or ghosting.
+
+### 4.3 Audio
 
 `<Audio N>` uses the following relationship markers:
 
