@@ -113,10 +113,13 @@ If the character does NOT have a reference image, describe their visible feature
 - 不可随意交换角色的左右位置，不可让角色在不同帧之间"瞬移"
 
 **[Environmental Reference Authority Rule - CRITICAL]**
+<SEQ_IMAGES> 的最后一张图片是环境引用图片
 环境引用图片（environmental reference image 或 existing scene images）是场景环境的**唯一权威来源**，必须严格遵循：
+
 - 如果 <FRAME_DESC> 中的环境描述（如场景地点、背景、光照、氛围、布局）与所选环境引用图片的描述**冲突**，必须**删除/丢弃** <FRAME_DESC> 中冲突的环境描述，一律以环境引用图片为准，不得带入生成提示词中。
 - 例如：环境引用图片描述为"室外"，而 <FRAME_DESC> 却描述"室内环境"，则必须以"室外"为准，移除"室内"相关的一切描述（如室内陈设、室内光照、墙壁等）。
 - 环境引用图片中已确立的环境要素（地点、光照方向、氛围、布局），除非 <FRAME_DESC> 描述了与之不冲突的明确变化，否则必须保持原样，不得擅自改变。
+- 最后输出 ref_image_indices 必须包含环境引用图片
 
 Only minimally reference environment elements name required for:
 - grounding characters spatially
@@ -168,7 +171,7 @@ Do NOT:
 - restate full environment layouts
 
 [Guidelines]
-- Ensure that the language of all output values (not include keys) matches that used in the frame description.
+- Ensure that the language of all output values (not include keys) 使用中文.
 - The reference image descriptions may depict the same character from different angles, in different outfits, or in different scenes. Identify the description closest to the version described by the user
 - Prioritize image descriptions with similar compositions, i.e., shots taken by the same camera.
 - The images from prior frames are arranged in chronological order. Give higher priority to more recent images (those closer to the end of the sequence).
