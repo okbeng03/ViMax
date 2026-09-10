@@ -691,7 +691,13 @@ Based on the provided story scene:
 ==================================================
 [CAMERA COVERAGE DESIGN RULES]
 
-Camera coverage must be action-driven, NOT illustration-driven.
+Camera coverage is NOT a request to enumerate possible viewpoints.
+
+It is a request to construct the smallest reusable camera system
+that can support the actual storyboard actions of this scene.
+
+Do not maximize camera diversity.
+Maximize camera utility and shot reuse.
 
 Each camera must support:
 
@@ -827,6 +833,157 @@ If style is:
   use believable cinematic production design and photorealistic spatial logic.
 * cyberpunk:
   use neon lighting, layered urban density, industrial cinematic atmosphere.
+
+==================================================
+[CAMERA COVERAGE SELECTION & CAMERA COUNT CONTROL]
+
+Camera coverage must be determined by the actual storytelling and blocking requirements of the scene.
+
+DO NOT generate camera views simply to provide more angles.
+
+The goal is:
+
+**minimum sufficient camera coverage + maximum shot reuse + stable spatial continuity**
+
+Before generating camera IDs, first determine:
+
+1. How many distinct spatial areas are actually used by the scene
+2. How many distinct character blocking zones are required
+3. How many movement directions need to be covered
+4. Which actions require a dedicated camera position
+5. Which shots can reuse the same camera with different framing, lens, or camera movement
+6. Which camera positions can cover multiple actions or multiple storyboard shots
+7. Whether a reverse angle is genuinely necessary for continuity
+8. Whether an additional angle provides meaningful storytelling value
+
+### Camera Quantity Rules
+
+Generate ONLY the number of camera coverage views that are necessary for the scene.
+
+Do NOT automatically generate 8 cameras.
+
+Use the following principle:
+
+* Simple scene / single action zone: approximately 2–3 cameras
+* Moderate scene / multiple actions or blocking zones: approximately 3–5 cameras
+* Complex scene / multiple movement directions, interaction zones, or major spatial transitions: approximately 5–7 cameras
+* Highly complex scene requiring extensive spatial coverage: up to 8 cameras
+
+**Maximum: 8 camera coverage views.**
+
+Never exceed 8 camera views.
+
+If fewer cameras can adequately cover the scene, generate fewer.
+
+A camera should only be created when it provides a distinct and reusable cinematic function.
+
+### Camera Reuse Priority
+
+Prioritize reusing existing camera positions over creating new camera positions.
+
+One camera may support multiple storyboard shots through:
+
+* different shot sizes
+* different lens choices
+* camera push-in / pull-out
+* camera tracking
+* camera pan
+* camera tilt
+* reframing
+* different character blocking within the same spatial zone
+
+Do NOT create a new camera merely because the shot changes from:
+
+* wide shot → medium shot
+* medium shot → close-up
+* static shot → tracking shot
+
+if the same physical camera position can plausibly support both shots.
+
+Create a new camera only when the required shot cannot be achieved naturally from an existing camera position without breaking:
+
+* spatial continuity
+* actor blocking
+* screen direction
+* sightlines
+* physical camera placement
+* interaction visibility
+* cinematic composition
+
+### Camera Coverage Optimization
+
+Before generating the final camera list, perform an internal coverage optimization:
+
+1. Generate the minimum candidate camera positions needed to cover all required actions.
+2. Check whether multiple storyboard shots can share the same camera.
+3. Remove redundant or visually similar camera positions.
+4. Merge cameras that cover substantially overlapping spatial regions.
+5. Preserve dedicated cameras only for genuinely different spatial functions.
+6. Verify that the remaining cameras collectively cover:
+
+   * establishing geography
+   * primary action zone
+   * movement corridor
+   * interaction zone
+   * dialogue coverage
+   * reverse coverage when required
+   * important environmental landmarks
+7. Output only the optimized camera set.
+
+The final camera set should be the **smallest practical set of reusable camera anchors** capable of supporting the scene.
+
+### Camera Priority
+
+When selecting cameras, prioritize in this order:
+
+1. Primary action coverage
+2. Spatial continuity
+3. Character movement continuity
+4. Interaction visibility
+5. Dialogue / reverse-shot coverage
+6. Establishing geography
+7. Environmental storytelling
+8. Detail / insert coverage
+9. Additional aesthetic angles
+
+Do not create a camera solely for aesthetic variety when an existing camera can perform the same storytelling function.
+
+### Camera Coverage Relationship
+
+All cameras must be treated as a coordinated coverage system.
+
+They should form a logical spatial network rather than a collection of independent viewpoints.
+
+Each camera should have:
+
+* a unique spatial purpose
+* a clear relationship to adjacent cameras
+* reusable framing potential
+* compatible screen direction
+* compatible actor movement paths
+* consistent environmental landmarks
+
+The camera set should collectively describe the same physical environment from different operational positions.
+
+### Final Validation
+
+Before producing the final output, verify:
+
+* Camera count ≤ 8
+* No redundant camera positions
+* No camera exists only for visual variety
+* Each camera supports at least one meaningful storyboard function
+* Multiple storyboard shots can reuse the same camera whenever possible
+* Camera positions form a coherent physical layout
+* All cameras remain inside plausible camera operating space
+* All cameras preserve the same environment topology
+* The camera set is sufficient for the scene's actual actions
+
+If a scene can be fully covered with 4 cameras, output 4 cameras rather than 8.
+
+If a scene only requires 2 cameras, output 2 cameras.
+
+# **Do not optimize for the number of cameras. Optimize for coverage efficiency and shot reuse.**
 
 ==================================================
 [OUTPUT]
