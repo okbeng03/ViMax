@@ -15,6 +15,7 @@ dependencies = [
     "openai>=1.95.0",
     "opencv-python",
     "scenedetect[opencv]>=0.6.7.1",
+    "soundfile>=0.14.0",
 ]
 
 [tool.uv.sources]
