@@ -38,13 +38,17 @@ class ShotDescriptionWithDialogues(BaseModel):
 # 后处理：订正 LLM 输出中被翻译成英文的对话
 # ---------------------------------------------------------------------------
 _ENGLISH_DIALOGUE_RE = re.compile(r"<d>\s*\[English\](.*?)</d>", re.DOTALL | re.IGNORECASE)
-_DIALOGUE_LINE_RE = re.compile(r"^\s*\[(?:Speaker|对话|Dialogue)\]", re.IGNORECASE)
+# audio_desc 中的对白行标记：英文 [Speaker]/[Dialogue] 与中文 [说话人]/[对话]/[对白]/[台词]
+_DIALOGUE_LINE_RE = re.compile(
+    r"^\s*\[(?:Speaker|Dialogue|说话人|对话|对白|台词)\]",
+    re.IGNORECASE,
+)
 _QUOTED_TEXT_RE = re.compile(r'[“"](.+)[”"]\s*$')
 _COLON_TEXT_RE = re.compile(r"[：:]\s*(.*)$")
 
 
 def _extract_original_dialogues(audio_desc: str) -> List[str]:
-    """从 audio_desc 中按出现顺序提取原始对白文本（仅处理 [Speaker]/[对话]/[Dialogue] 行）。"""
+    """从 audio_desc 中按出现顺序提取原始对白文本（仅处理 [Speaker]/[说话人]/[对话]/[对白]/[台词]/[Dialogue] 行）。"""
     dialogues: List[str] = []
     if not audio_desc:
         return dialogues
@@ -76,6 +80,11 @@ def _fix_english_dialogues(prompt: str, audio_desc: str) -> str:
         return prompt
     original_dialogues = _extract_original_dialogues(audio_desc)
     if not original_dialogues:
+        logger.warning(
+            "检测到 %d 处 <d>[English]</d> 对话，但未从 audio_desc 提取到原始对白，保持原样。audio_desc=%r",
+            len(_ENGLISH_DIALOGUE_RE.findall(prompt)),
+            audio_desc,
+        )
         return prompt
 
     replaced = 0
