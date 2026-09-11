@@ -33,6 +33,7 @@ from utils.provider_presets import create_chat_model
 from utils.completion_logger import set_working_dir
 from agents.hanzi_creative_agent import HanziCreativeAgent
 from agents.hanzi_evolution_agent import HanziEvolutionAgent, EvolutionTransitions
+from configs.config import model_name
 
 logger = logging.getLogger(__name__)
 
@@ -1638,7 +1639,11 @@ class HanziPipeline:
             stroke_order_text = ""
             for retry in range(3):
                 try:
-                    response = await self.chat_model.ainvoke(stroke_prompt)
+                    chat_model = create_chat_model(
+                        model_provider="qwen",
+                        model=model_name.get("tertiary", "deepseek-v4-flash-0731"),
+                    )
+                    response = await chat_model.ainvoke(stroke_prompt)
                     stroke_order_text = response.content.strip()
                     print(f"📝 Stroke order: {stroke_order_text}")
                     break
