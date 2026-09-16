@@ -134,7 +134,6 @@ class Script2VideoPipelineV2:
         if os.path.exists(final_video_path):
             print(f"🚀 Skipped concatenating videos, already exists.")
         else:
-            print(f"🎬 Starting concatenating videos...")
             video_clips = []
             for idx, shot_description in enumerate(storyboard):
                 shot_video_path = os.path.join(self.working_dir, "shots", f"{shot_description.idx}", "video.mp4")
@@ -146,6 +145,7 @@ class Script2VideoPipelineV2:
                     VideoFileClip(shot_video_path, audio=True)
                 )
 
+            print(f"🎬 Starting concatenating videos...")
             story_video = concatenate_videoclips(video_clips, method="compose")
             story_video.write_videofile(final_video_path, codec="libx264", preset="medium", audio_codec="aac", fps=None, audio_bitrate="192k")
             print(f"☑️ Concatenated story video, saved to {final_video_path}.")

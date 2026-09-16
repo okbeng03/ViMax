@@ -65,6 +65,9 @@ class Idea2VideoPipeline:
         os.makedirs(os.path.join(self.working_dir, "transitions"), exist_ok=True)
         os.makedirs(os.path.join(self.working_dir, "voices"), exist_ok=True)
 
+        if self.mode.endswith("storyboard"):
+            os.makedirs(os.path.join(self.working_dir, "intro"), exist_ok=True)
+
     @classmethod
     def init_from_config(cls, config_path: str):
         with open(config_path, "r") as f:
