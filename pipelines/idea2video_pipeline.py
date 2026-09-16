@@ -558,15 +558,7 @@ class Idea2VideoPipeline:
         
         if self.check_interrupt("portrait"):
             return
-
-        # 生成场景剧本
-        scene_scripts = await self.write_script_based_on_story(story=story, user_requirement=user_requirement)
         
-        if self.check_interrupt("script"):
-            return
-
-        all_video_paths = []
-
         if self.interrupt_step and self.interrupt_step.startswith("intro_"):
             intro_working_dir = os.path.join(self.working_dir, "intro")
             intro_script2video_pipeline = Script2VideoPipelineV2(
@@ -591,6 +583,14 @@ class Idea2VideoPipeline:
                 character_portraits_registry=character_portraits_registry,
             )
             return
+
+        # 生成场景剧本
+        scene_scripts = await self.write_script_based_on_story(story=story, user_requirement=user_requirement)
+        
+        if self.check_interrupt("script"):
+            return
+
+        all_video_paths = []
 
         if self.mode == "gacha":
             # 抽卡模式。只需要处理对应场景
@@ -617,7 +617,7 @@ class Idea2VideoPipeline:
         else:
             # 生成场景视频，拆解成镜头再合成
             for idx, scene_script in enumerate(scene_scripts):
-                # if idx == 1:
+                # if idx == 2 or idx == 3:
                 #     continue
 
                 scene_working_dir = os.path.join(self.working_dir, f"scene_{idx}")
