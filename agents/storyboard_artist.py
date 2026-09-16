@@ -1889,6 +1889,10 @@ class StoryboardArtist:
             model_provider="qwen",
             model=model_name.get("secondary", "deepseek-v4-flash-0731"),
         )
+        self.tertiary_chat_model = create_chat_model(
+            model_provider="qwen",
+            model=model_name.get("tertiary", "deepseek-v4-flash-0731"),
+        )
 
     @retry(stop=stop_after_attempt(3), after=after_func)
     async def design_storyboard(
@@ -2049,7 +2053,7 @@ class StoryboardArtist:
                 ('human', human_prompt_template_decompose_visual_description),
             ]
         )
-        chain = prompt_template | self.chat_model | parser
+        chain = prompt_template | self.tertiary_chat_model | parser
 
         visual_desc = shot_brief_desc.visual_desc.strip()
 
