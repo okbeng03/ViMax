@@ -17,7 +17,7 @@ import yaml
 import shutil
 import subprocess
 import cairosvg
-from typing import Any, List
+from typing import Any, List, Optional
 from PIL import Image
 from tools.render_backend import RenderBackend
 from langchain.chat_models import init_chat_model
@@ -34,6 +34,7 @@ from utils.completion_logger import set_working_dir
 from agents.hanzi_creative_agent import HanziCreativeAgent
 from agents.hanzi_evolution_agent import HanziEvolutionAgent, EvolutionTransitions
 from configs.config import model_name
+import configs.config
 
 logger = logging.getLogger(__name__)
 
@@ -584,6 +585,7 @@ class HanziPipeline:
     async def generate_transitions(
         self, 
         glyph_png_paths: dict[str, str],
+        hanzi: Optional[str] = None,
     ) -> list[str]:
         """
         使用 hanzi_evolution agent 生成字形过渡描述
@@ -596,7 +598,7 @@ class HanziPipeline:
         """
         
         print(f"🎬 Generating transition descriptions for {len(glyph_png_paths)} glyphs...")
-        evolution_path = os.path.join(self.working_dir, "transition.json")
+        evolution_path = os.path.join(self.working_dir, f"{hanzi}_transition.json" if hanzi else "transition.json")
         transitions = []
         
          # 定义字形演变顺序
@@ -636,6 +638,7 @@ class HanziPipeline:
         self, 
         glyph_png_paths: dict[str, str],
         transitions: EvolutionTransitions,
+        hanzi: Optional[str] = ""
     ) -> list[str]:
         """
         使用 hanzi_evolution agent 生成演变过渡动画
@@ -697,9 +700,9 @@ class HanziPipeline:
             #     print(f"✅ Generated composite image for {to_type}")
             
             # 视频文件名：甲骨文_to_金文.mp4
-            video_filename = f"{idx}_{from_type}_to_{to_type}.mp4"
+            video_filename = f"{hanzi}{idx}_{from_type}_to_{to_type}.mp4"
             transition_video_path = os.path.join(evolution_dir, video_filename)
-            transition_video_an_path = os.path.join(evolution_dir, f"{idx}_{from_type}_to_{to_type}_an.mp4")
+            transition_video_an_path = os.path.join(evolution_dir, f"{hanzi}{idx}_{from_type}_to_{to_type}_an.mp4")
             
             if os.path.exists(transition_video_an_path):
                 print(f"🚀 Transition video already exists: {video_filename}")
@@ -1257,7 +1260,7 @@ class HanziPipeline:
                 dest_path = os.path.join(char_portrait_dir, f"{glyph_type}.png")
 
                 if not os.path.exists(dest_path):
-                    shutil.copy(temp_png_path, dest_path)
+                    shutil.copy(png_path, dest_path)
 
                 registry[f"{target_hanzi}字"][glyph_type] = {
                     "path": dest_path,
@@ -1309,6 +1312,11 @@ class HanziPipeline:
                 if not glyph_png_paths:
                     print(f"⚠️ No PNG paths for {hanzi}")
                     continue
+
+                relate_hanzi_transition = getattr(configs.config, "relate_hanzi_transition", [])
+
+                if len(relate_hanzi_transition) and hanzi in relate_hanzi_transition and len(glyph_png_paths) > 2:
+                    await self.generate_evolution_video(glyph_png_paths, hanzi)
                 
                 # 3. 保存角色信息
                 await self.save_character_info(
@@ -1757,33 +1765,37 @@ class HanziPipeline:
         print(f"✅ Generated stroke video: {output_video_path}")
         return output_video_path
 
-    async def generate_evolution_video(self, glyph_png_paths: list[str]) -> str:
+    async def generate_evolution_video(self, glyph_png_paths: list[str], hanzi: Optional[str] = None) -> str:
         """
         生成演变动画
         """
         
-        print(f"🎬 Starting generate evolution video for '{self.hanzi}'...")
+        print(f"🎬 Starting generate evolution video for '{hanzi or self.hanzi}'...")
         
-        final_video_path = os.path.join(self.temp_dir, "evolution_final_video.mp4")
+        final_video_path = os.path.join(self.temp_dir, f"{hanzi}_evolution_final_video.mp4" if hanzi else "evolution_final_video.mp4")
         
         if os.path.exists(final_video_path):
             print(f"🚀 Skipped generating evolution final video, already exists")
             return final_video_path
         
         # 生成过渡描述
-        transitions = await self.generate_transitions(glyph_png_paths)
+        transitions = await self.generate_transitions(glyph_png_paths, hanzi)
         
         if self.check_interrupt("transition"):
             return ""
         
         if self.comfyui_enable:
-            video_paths = await self.generate_evolution_videos(glyph_png_paths, transitions)
+            video_paths = await self.generate_evolution_videos(glyph_png_paths, transitions, hanzi)
             
-            # 生成旁白
-            narration_audio_path = await self.generate_narration_audio(glyph_png_paths)
+            if not hanzi:
+                # 生成旁白
+                narration_audio_path = await self.generate_narration_audio(glyph_png_paths)
             
             # Step 7: 合并视频
             merged_video_path = await self.merge_evolution_videos(video_paths)
+
+            if hanzi:
+                return merged_video_path
 
             # Step 10: 将旁白音频添加到视频
             self.add_audio_to_video(merged_video_path, narration_audio_path, glyph_png_paths, final_video_path)
