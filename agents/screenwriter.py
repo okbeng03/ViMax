@@ -183,6 +183,7 @@ You will receive a story within <STORY> and </STORY> tags and a user requirement
 - Coherence and Fluidity: Ensure natural transitions between scenes and overall story flow. Avoid abrupt plot jumps.
 - Visual Enhancement Principles: All descriptions must be "filmable". Use concrete actions instead of abstract emotions (e.g., "He turns away to avoid eye contact" instead of "He feels ashamed"). Decribe rich environmental details include lighting, props, weather, etc., to enhance the atmosphere. Visualize character performances such as express internal states through facial expressions, gestures, and movements (e.g., "She bites her lip, her hands trembling" to imply nervousness).
 - Consistency: Ensure dialogue and actions align with the original story's intent, without deviating from the core plot.
+- 每个场景是列表的一项。
 """
 
 # [Role] 
