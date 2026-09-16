@@ -79,7 +79,7 @@ class Script2VideoPipelineV2:
     def check_interrupt(self, step_name: str):
         """检查是否中断"""
         
-        return True if self.interrupt_step ==  step_name else False
+        return True if self.interrupt_step.endswith(step_name) else False
 
 
     async def __call__(
@@ -99,7 +99,7 @@ class Script2VideoPipelineV2:
             user_requirement=user_requirement,
         )
         
-        if self.check_interrupt("intro_storyboard"):
+        if self.check_interrupt("storyboard"):
             return
 
         # 分解镜头，生成首尾帧和过渡动作帧
@@ -121,7 +121,7 @@ class Script2VideoPipelineV2:
                 style=style,
             )
 
-        if self.check_interrupt("intro_shot_video"):
+        if self.check_interrupt("shot_video"):
             return
 
         await self.generate_narration_audio(
@@ -413,7 +413,7 @@ class Script2VideoPipelineV2:
             
             print(f"✅ Generated narration description and saved to {narration_desc_path}.")
         
-        if self.check_interrupt("intro_narration_desc"):
+        if self.check_interrupt("narration_desc"):
             return
 
         if not self.comfyui_enable:

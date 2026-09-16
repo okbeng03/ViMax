@@ -59,6 +59,7 @@ def _ensure_url_protocol(url: str) -> str:
 class HanziPipeline:
     def __init__(
         self,
+        mode: str,
         chat_model: BaseChatModel,
         image_generator: Any,
         video_generator: Any,
@@ -71,6 +72,7 @@ class HanziPipeline:
         comfyui_enable: bool = True,
         disable_transition: bool = False,
     ):
+        self.mode = mode
         self.chat_model: BaseChatModel = chat_model
         self.image_generator: Any = image_generator
         self.video_generator: Any = video_generator
@@ -1929,7 +1931,8 @@ class HanziPipeline:
             return ""
         
         # Step 3: 生成创意
-        await self.generate_creative_idea(hanzi_info)
+        if not self.mode.endswith("storyboard"):
+            await self.generate_creative_idea(hanzi_info)
         
         if self.check_interrupt("idea"):
             return ""

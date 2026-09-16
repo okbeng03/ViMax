@@ -501,10 +501,11 @@ class Idea2VideoPipeline:
 
         hanzi_idea = ""
         # 汉字模式
-        if self.mode == "hanzi":
+        if self.mode in ["hanzi", "hanzi_storyboard"]:
             # 汉字模式
             hanzi_working_dir = os.path.join(self.working_dir, "hanzi")
             hanzi_pipeline = HanziPipeline(
+                mode=self.mode,
                 chat_model=self.chat_model,
                 image_generator=self.image_generator,
                 video_generator=self.video_generator,
@@ -559,7 +560,7 @@ class Idea2VideoPipeline:
         if self.check_interrupt("portrait"):
             return
         
-        if self.interrupt_step and self.interrupt_step.startswith("intro_"):
+        if self.mode.endswith("storyboard") or (self.interrupt_step and self.interrupt_step.startswith("intro_")):
             intro_working_dir = os.path.join(self.working_dir, "intro")
             intro_script2video_pipeline = Script2VideoPipelineV2(
                 chat_model=self.chat_model,
