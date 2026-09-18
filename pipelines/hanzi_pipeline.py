@@ -1138,7 +1138,7 @@ class HanziPipeline:
         return output_path
         
 
-    async def merge_evolution_videos(self, video_paths: list[str]) -> str:
+    async def merge_evolution_videos(self, video_paths: list[str], hanzi: Optional[str] = "") -> str:
         """
         合并所有演变过渡视频成最终视频
         
@@ -1150,7 +1150,7 @@ class HanziPipeline:
             print("⚠️ No videos to merge")
             return ""
         
-        final_video_path = os.path.join(self.temp_dir, "evolution.mp4")
+        final_video_path = os.path.join(self.temp_dir, f"{hanzi}evolution.mp4")
         
         if os.path.exists(final_video_path):
             print(f"🚀 Evolution video already exists")
@@ -1794,7 +1794,7 @@ class HanziPipeline:
                 narration_audio_path = await self.generate_narration_audio(glyph_png_paths)
             
             # Step 7: 合并视频
-            merged_video_path = await self.merge_evolution_videos(video_paths)
+            merged_video_path = await self.merge_evolution_videos(video_paths, hanzi)
 
             if hanzi:
                 return merged_video_path
