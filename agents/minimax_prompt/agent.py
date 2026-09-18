@@ -143,6 +143,27 @@ class PromptConverter:
             if idx not in seen:
                 seen.add(idx)
                 vis_char_idxs.append(idx)
+
+        if shot_description.workflow_type == "ref":
+            # ref 工作流
+            shot = StoryboardShot(
+                idx=shot_description.idx,
+                motion_description=shot_description.motion_desc,
+                audio_desc=shot_description.audio_desc,
+                duration=shot_description.shot_duration,
+                characters=vis_char_idxs,
+                character_path=None,
+                first_frame_description=shot_description.ff_desc,
+                final_frame_description=shot_description.lf_desc,
+                workflow_type="ref"
+            )
+
+            return await self.ref_convert(
+                style=style,
+                shot_description=shot,
+                characters=characters,
+            )
+
         characters = [characters[idx] for idx in vis_char_idxs]
 
         characters_str = "\n".join([f"{character.identifier_in_scene}: {character.static_features}{character.dynamic_features}" for character in characters])

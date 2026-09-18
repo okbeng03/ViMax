@@ -324,3 +324,11 @@ class ShotDescription(BaseModel):
     #     default=None,
     #     description="The emotion of the speaker when delivering the line, if applicable. If there is a speaker, there must be an emotion. If there is no speaker, this field should be set to None.",
     # )
+    workflow_type: Optional[str] = Field(
+        default="ref",
+        description="镜头工作流类型。",
+        examples=[
+            "ref",
+            "base",
+        ],
+    )

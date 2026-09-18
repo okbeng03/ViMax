@@ -648,6 +648,7 @@ class Script2VideoPipeline:
                     audio_path=dialogue_audio_path,
                     duration=int(shot_description.shot_duration or 5.0),
                     enable_schedule_mode=True,
+                    workflow_name="ref" if shot_description.workflow_type == "ref" else "base",
                 )
             else:
                 video_output = await self.video_generator.generate_single_video(
