@@ -311,9 +311,14 @@ class ComfyUIWorkflowRunner:
                 queue.task_done()
                 logger.info("工作流执行完成")
                 
-                # 等待30秒，保证ComfyUI环境释放
-                logger.info("等待30秒后开始下一个任务...")
-                await asyncio.sleep(30)
+                # 根据工作流类型决定等待时间：音频工作流 10s，其他 30s
+                workflow_name = os.path.splitext(os.path.basename(task.workflow_path))[0]
+                if "tts" in workflow_name.lower():
+                    wait_seconds = 10
+                else:
+                    wait_seconds = 30
+                logger.info(f"等待{wait_seconds}秒后开始下一个任务...")
+                await asyncio.sleep(wait_seconds)
                 
             except asyncio.TimeoutError:
                 # 没有新任务，继续循环检查是否应该退出
