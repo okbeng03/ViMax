@@ -961,7 +961,7 @@ class StoryboardAgent:
         self,
         script: str,
         characters: List[CharacterInScene],
-        retry_timeout: int = 600,
+        retry_timeout: int = 800,
     ) -> List[StoryboardShot]:
         """根据脚本与角色列表生成故事板。
 
