@@ -13,6 +13,7 @@ import os
 import json
 import logging
 import re
+import time
 import yaml
 import shutil
 import subprocess
@@ -205,7 +206,8 @@ class HanziPipeline:
                 # 下载笔画 gif。img id="bhbs"
                 brush_stroke_img = soup.find('img', id='glyph-img')
                 if brush_stroke_img:
-                    brush_stroke_url = _ensure_url_protocol(brush_stroke_img["data-gif"])
+                    # 加时间戳
+                    brush_stroke_url = _ensure_url_protocol(brush_stroke_img["data-gif"]) + '?t=' + str(int(time.time() * 1000))
                     download_image(brush_stroke_url, brush_stroke_path)
 
         definitions = []
@@ -587,7 +589,7 @@ class HanziPipeline:
     async def generate_transitions(
         self, 
         glyph_png_paths: dict[str, str],
-        hanzi: Optional[str] = None,
+        hanzi: Optional[str] = "",
     ) -> list[str]:
         """
         使用 hanzi_evolution agent 生成字形过渡描述
@@ -600,7 +602,7 @@ class HanziPipeline:
         """
         
         print(f"🎬 Generating transition descriptions for {len(glyph_png_paths)} glyphs...")
-        evolution_path = os.path.join(self.working_dir, f"{hanzi}_transition.json" if hanzi else "transition.json")
+        evolution_path = os.path.join(self.working_dir, f"{hanzi}transition.json" if hanzi else "transition.json")
         transitions = []
         
          # 定义字形演变顺序
@@ -1767,7 +1769,7 @@ class HanziPipeline:
         print(f"✅ Generated stroke video: {output_video_path}")
         return output_video_path
 
-    async def generate_evolution_video(self, glyph_png_paths: list[str], hanzi: Optional[str] = None) -> str:
+    async def generate_evolution_video(self, glyph_png_paths: list[str], hanzi: Optional[str] = "") -> str:
         """
         生成演变动画
         """
