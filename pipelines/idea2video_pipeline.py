@@ -257,21 +257,21 @@ class Idea2VideoPipeline:
                 front_portrait_output = await self.character_portraits_generator.generate_front_portrait(character, style)
                 front_portrait_output.save(front_portrait_path)
 
-        side_portrait_path = os.path.join(character_dir, "side.png")
-        if os.path.exists(side_portrait_path):
-            pass
-        else:
-            if self.comfyui_enable:
-                side_portrait_output = await self.character_portraits_generator.generate_side_portrait(character, front_portrait_path)
-                side_portrait_output.save(side_portrait_path)
+        # side_portrait_path = os.path.join(character_dir, "side.png")
+        # if os.path.exists(side_portrait_path):
+        #     pass
+        # else:
+        #     if self.comfyui_enable:
+        #         side_portrait_output = await self.character_portraits_generator.generate_side_portrait(character, front_portrait_path)
+        #         side_portrait_output.save(side_portrait_path)
 
-        back_portrait_path = os.path.join(character_dir, "back.png")
-        if os.path.exists(back_portrait_path):
-            pass
-        else:
-            if self.comfyui_enable:
-                back_portrait_output = await self.character_portraits_generator.generate_back_portrait(character, front_portrait_path)
-                back_portrait_output.save(back_portrait_path)
+        # back_portrait_path = os.path.join(character_dir, "back.png")
+        # if os.path.exists(back_portrait_path):
+        #     pass
+        # else:
+        #     if self.comfyui_enable:
+        #         back_portrait_output = await self.character_portraits_generator.generate_back_portrait(character, front_portrait_path)
+        #         back_portrait_output.save(back_portrait_path)
 
         print(
             f"☑️ Completed character portrait generation for {character.identifier_in_scene}.")
@@ -282,14 +282,14 @@ class Idea2VideoPipeline:
                     "path": front_portrait_path,
                     "description": f"A front view portrait of {character.identifier_in_scene}.",
                 },
-                "side": {
-                    "path": side_portrait_path,
-                    "description": f"A side view portrait of {character.identifier_in_scene}.",
-                },
-                "back": {
-                    "path": back_portrait_path,
-                    "description": f"A back view portrait of {character.identifier_in_scene}.",
-                },
+                # "side": {
+                #     "path": side_portrait_path,
+                #     "description": f"A side view portrait of {character.identifier_in_scene}.",
+                # },
+                # "back": {
+                #     "path": back_portrait_path,
+                #     "description": f"A back view portrait of {character.identifier_in_scene}.",
+                # },
             }
         }
 
