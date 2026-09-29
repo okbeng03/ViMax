@@ -343,7 +343,7 @@ class VideoGeneratorComfyUIMiniMax:
             workflow=workflow,
             output_node_ids=output_node_ids,
             ui_workflow=ui_workflow,
-            timeout=3000,  # 10 分钟超时
+            timeout=3600,  # 10 分钟超时
         )
         
         # 提取输出路径
