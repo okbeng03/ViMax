@@ -62,6 +62,11 @@ _global_worker_task: asyncio.Task[None] | None = None
 _global_is_running = False
 _global_queue_lock: asyncio.Lock | None = None
 
+# 连续执行视频工作流的次数（累计到阈值后释放显存并清零；遇到非视频工作流则清零）
+_global_video_run_count = 0
+# 连续执行多少次视频工作流后释放一次显存
+VIDEO_FREE_MEMORY_THRESHOLD = 3
+
 
 def _get_global_queue() -> asyncio.Queue[WorkflowTask]:
     """获取或创建全局队列"""
@@ -307,6 +312,12 @@ class ComfyUIWorkflowRunner:
                     task.future.set_exception(e)
                     logger.error(f"工作流执行失败: {e}")
                 
+                # 连续视频工作流计数，达到阈值后释放显存（失败不影响主流程）
+                try:
+                    await self._count_and_free_if_needed(task)
+                except Exception as e:
+                    logger.warning(f"视频工作流计数/释放显存异常: {e}")
+                
                 # 标记任务完成
                 queue.task_done()
                 logger.info("工作流执行完成")
@@ -335,6 +346,73 @@ class ComfyUIWorkflowRunner:
         
         logger.info("全局队列工作器已停止")
     
+    @staticmethod
+    def _is_video_workflow(workflow_path: str, workflow: dict[str, Any]) -> bool:
+        """
+        判断是否为视频工作流
+
+        判定条件（满足其一即可）：
+        1. workflow_path 中包含 "video"（不区分大小写）
+        2. 工作流中存在视频输出节点（VHS_VideoCombine / VideoCombine / SaveVideo）
+           —— 现有视频工作流文件名不含 "video"（如 LTX2_3_*.json、MiniMax_*.json），
+              仅靠路径匹配不会命中，因此需要按节点类型兜底
+        """
+        if "video" in (workflow_path or "").lower():
+            return True
+
+        for node in (workflow or {}).values():
+            if isinstance(node, dict) and node.get("class_type") in ComfyUIWorkflowRunner.VIDEO_OUTPUT_TYPES:
+                return True
+
+        return False
+
+    async def _free_memory(self) -> bool:
+        """
+        调用 ComfyUI /free 接口释放显存与内存
+
+        Returns:
+            是否调用成功
+        """
+        url = f"{self.base_url}/free"
+        payload = {"unload_models": True, "free_memory": True}
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    url,
+                    json=payload,
+                    timeout=aiohttp.ClientTimeout(total=60),
+                ) as response:
+                    if response.status != 200:
+                        error_text = await response.text()
+                        logger.warning(f"释放 ComfyUI 显存失败，状态码 {response.status}: {error_text}")
+                        return False
+
+                    logger.info(f"已释放 ComfyUI 显存与内存: {url} {payload}")
+                    return True
+        except Exception as e:
+            logger.warning(f"调用 ComfyUI /free 接口异常: {e}")
+            return False
+
+    async def _count_and_free_if_needed(self, task: "WorkflowTask") -> None:
+        """
+        统计连续执行的视频工作流次数；累计达到阈值后释放显存并清零计数
+
+        非视频工作流会将连续计数清零。
+        """
+        global _global_video_run_count
+
+        if not self._is_video_workflow(task.workflow_path, task.workflow):
+            _global_video_run_count = 0
+            return
+
+        _global_video_run_count += 1
+        logger.info(f"连续执行视频工作流计数: {_global_video_run_count}/{VIDEO_FREE_MEMORY_THRESHOLD}")
+
+        if _global_video_run_count > VIDEO_FREE_MEMORY_THRESHOLD:
+            await self._free_memory()
+            _global_video_run_count = 0
+
     @staticmethod
     def stop_worker():
         """停止全局队列工作器"""
