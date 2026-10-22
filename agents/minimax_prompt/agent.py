@@ -37,7 +37,13 @@ class ShotDescriptionWithDialogues(BaseModel):
 # ---------------------------------------------------------------------------
 # 后处理：订正 LLM 输出中被翻译成英文的对话
 # ---------------------------------------------------------------------------
-_ENGLISH_DIALOGUE_RE = re.compile(r"<d>\s*\[English\](.*?)</d>", re.DOTALL | re.IGNORECASE)
+# 对话标签：<d>[English] ...</d> 或 <d>[Chinese] ...</d>
+_DIALOGUE_TAG_RE = re.compile(
+    r"<d>\s*\[(?P<lang>English|Chinese)\]\s*(?P<text>.*?)</d>",
+    re.DOTALL | re.IGNORECASE,
+)
+# CJK 统一表意文字（基本区 + 扩展 A），用于判断对话内容是否含中文字符
+_CJK_RE = re.compile(r"[\u4e00-\u9fff\u3400-\u4dbf]")
 # audio_desc 中的对白行标记：英文 [Speaker]/[Dialogue] 与中文 [说话人]/[对话]/[对白]/[台词]
 _DIALOGUE_LINE_RE = re.compile(
     r"^\s*\[(?:Speaker|Dialogue|说话人|对话|对白|台词)\]",
@@ -68,21 +74,41 @@ def _extract_original_dialogues(audio_desc: str) -> List[str]:
     return dialogues
 
 
+def _dialogue_needs_fix(lang: str, text: str) -> bool:
+    """
+    判断某处对话是否需要订正：
+    - [English]：一律订正（应还原为中文原文）
+    - [Chinese] 但内容不含任何中文字符：仍是被翻译成了英文，同样需要订正
+    """
+    if lang.strip().lower() == "english":
+        return True
+    return not _CJK_RE.search(text)
+
+
 def _fix_english_dialogues(prompt: str, audio_desc: str) -> str:
     """
-    检查 LLM 输出中的 <d>[English] ...</d> 英文对话；
-    若命中，则从 audio_desc 提取原始中文对白，按出现顺序替换为 <d>[Chinese] 原文</d>。
-    英文对话数量多于原始对白时，多余部分保持原样。
+    检查 LLM 输出中的对话标签 <d>[English] ...</d> 与 <d>[Chinese] ...</d>：
+    - [English] 一律视为未还原
+    - [Chinese] 但内容中不含任何中文字符，同样视为未还原
+    命中的则从 audio_desc 提取原始中文对白，按出现顺序替换为 <d>[Chinese] 原文</d>。
+    需订正的对话数量多于原始对白时，多余部分保持原样。
     """
     if not prompt or not audio_desc:
         return prompt
-    if not _ENGLISH_DIALOGUE_RE.search(prompt):
+
+    needs_fix_count = sum(
+        1
+        for m in _DIALOGUE_TAG_RE.finditer(prompt)
+        if _dialogue_needs_fix(m.group("lang"), m.group("text"))
+    )
+    if not needs_fix_count:
         return prompt
+
     original_dialogues = _extract_original_dialogues(audio_desc)
     if not original_dialogues:
         logger.warning(
-            "检测到 %d 处 <d>[English]</d> 对话，但未从 audio_desc 提取到原始对白，保持原样。audio_desc=%r",
-            len(_ENGLISH_DIALOGUE_RE.findall(prompt)),
+            "检测到 %d 处需订正的对话，但未从 audio_desc 提取到原始对白，保持原样。audio_desc=%r",
+            needs_fix_count,
             audio_desc,
         )
         return prompt
@@ -91,15 +117,21 @@ def _fix_english_dialogues(prompt: str, audio_desc: str) -> str:
 
     def _replacer(match: re.Match) -> str:
         nonlocal replaced
+        # 不需要订正的标签（[Chinese] 且含中文字符）原样保留，且不占用原始对白名额
+        if not _dialogue_needs_fix(match.group("lang"), match.group("text")):
+            return match.group(0)
         if replaced >= len(original_dialogues):
             return match.group(0)
         original = original_dialogues[replaced]
         replaced += 1
         return f"<d>[Chinese] {original}</d>"
 
-    fixed_prompt = _ENGLISH_DIALOGUE_RE.sub(_replacer, prompt)
+    fixed_prompt = _DIALOGUE_TAG_RE.sub(_replacer, prompt)
     if replaced:
-        logger.warning("检测到 %d 处英文对话，已用 audio_desc 中的原始中文对白订正", replaced)
+        logger.warning(
+            "检测到 %d 处需订正的对话（[English]，或 [Chinese] 但无中文字符），已用 audio_desc 中的原始中文对白替换",
+            replaced,
+        )
     return fixed_prompt
 
 
