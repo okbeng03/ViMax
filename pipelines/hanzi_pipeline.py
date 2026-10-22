@@ -12,14 +12,15 @@ HanziPipeline: 汉字演变视频生成流水线
 import os
 import json
 import logging
+import math
 import re
 import time
 import yaml
 import shutil
 import subprocess
 import cairosvg
-from typing import Any, List, Optional
-from PIL import Image
+from typing import Any, List, Optional, Tuple
+from PIL import Image, ImageDraw, ImageFont
 from tools.render_backend import RenderBackend
 from langchain.chat_models import init_chat_model
 from moviepy import VideoFileClip, concatenate_videoclips
@@ -44,6 +45,26 @@ glyph_type_descriptions = {
     "楷书": "如果未明确，泛指现在的汉字"
 }
 assets_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets")
+
+def _load_cjk_font(size: int) -> Optional[ImageFont.FreeTypeFont]:
+    """
+    加载一个可绘制中文的字体，找不到时返回 None。
+    """
+    candidates = [
+        "/System/Library/Fonts/PingFang.ttc",                      # macOS
+        "/System/Library/Fonts/Hiragino Sans GB.ttc",              # macOS
+        "/System/Library/Fonts/STHeiti Light.ttc",                 # macOS
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",  # Linux
+        "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",            # Linux
+        "C:/Windows/Fonts/msyh.ttc",                               # Windows
+    ]
+    for path in candidates:
+        if os.path.exists(path):
+            try:
+                return ImageFont.truetype(path, size)
+            except Exception:
+                continue
+    return None
 
 def _ensure_url_protocol(url: str) -> str:
     """
@@ -1317,10 +1338,10 @@ class HanziPipeline:
                     print(f"⚠️ No PNG paths for {hanzi}")
                     continue
 
-                relate_hanzi_transition = getattr(configs.config, "relate_hanzi_transition", [])
+                # relate_hanzi_transition = getattr(configs.config, "relate_hanzi_transition", [])
 
-                if len(relate_hanzi_transition) and hanzi in relate_hanzi_transition and len(glyph_png_paths) > 2:
-                    await self.generate_evolution_video(glyph_png_paths, hanzi)
+                # if len(relate_hanzi_transition) and hanzi in relate_hanzi_transition and len(glyph_png_paths) > 2:
+                #     await self.generate_evolution_video(glyph_png_paths, hanzi)
                 
                 # 3. 保存角色信息
                 await self.save_character_info(
@@ -1807,7 +1828,412 @@ class HanziPipeline:
             return final_video_path
 
         return ""
-    
+
+    @staticmethod
+    def _detect_blackboard_area(bg_img: Image.Image) -> Tuple[int, int, int, int]:
+        """
+        检测黑板背景图中的暗色板面区域，返回 (left, top, right, bottom)。
+        通过缩小图片后统计暗色像素包围盒实现，自适应不同分辨率的背景图。
+        """
+        small = bg_img.convert("L").resize((160, 90))
+        threshold = 80
+        left, top, right, bottom = 10**9, 10**9, -1, -1
+        for y in range(small.height):
+            for x in range(small.width):
+                if small.getpixel((x, y)) < threshold:
+                    left = min(left, x)
+                    right = max(right, x)
+                    top = min(top, y)
+                    bottom = max(bottom, y)
+        if right <= left or bottom <= top:
+            # 检测失败时退回居中默认区域
+            w, h = bg_img.size
+            return (int(w * 0.15), int(h * 0.20), int(w * 0.85), int(h * 0.85))
+        sx = bg_img.width / small.width
+        sy = bg_img.height / small.height
+        # 略微内缩，避免压到板面边框
+        inset_x = (right - left) * 0.03 * sx
+        inset_y = (bottom - top) * 0.03 * sy
+        return (
+            int(left * sx + inset_x),
+            int(top * sy + inset_y),
+            int(right * sx - inset_x),
+            int(bottom * sy - inset_y),
+        )
+
+    def _compute_glyph_cells(self, glyph_png_paths: dict[str, str]) -> Optional[dict]:
+        """
+        计算黑板上每个字形卡片与标签的位置（平铺图与高亮图共用同一套布局）。
+
+        Returns:
+            布局信息 dict；无可用字形或背景图缺失时返回 None
+        """
+        glyph_order = ['甲骨文', '金文', '楚系简帛', '说文', '隶书', '繁体', '楷书']
+        ordered_glyphs = [
+            (t, glyph_png_paths[t]) for t in glyph_order
+            if glyph_png_paths.get(t) and os.path.exists(glyph_png_paths[t])
+        ]
+        for glyph_type, png_path in glyph_png_paths.items():
+            if glyph_type not in glyph_order and os.path.exists(png_path):
+                ordered_glyphs.append((glyph_type, png_path))
+
+        if not ordered_glyphs:
+            return None
+
+        blackboard_path = os.path.join(assets_dir, "blackboard.png")
+        if not os.path.exists(blackboard_path):
+            logger.warning(f"Blackboard background not found: {blackboard_path}")
+            return None
+
+        bg = Image.open(blackboard_path).convert("RGBA")
+        board_box = self._detect_blackboard_area(bg)
+        board_w = board_box[2] - board_box[0]
+        board_h = board_box[3] - board_box[1]
+
+        n = len(ordered_glyphs)
+        pad = int(min(board_w, board_h) * 0.04)
+        # 标签字号加大，标签带高度随之调整；标签紧贴字形图下方
+        font_size = int(board_h * 0.09)
+        label_h = int(font_size * 1.2)
+        label_gap = int(board_h * 0.015) + 10  # 字形图与标签之间的间距
+        content_shift = int(board_h * 0.03)   # 内容整体略微下移
+
+        # 网格自适应：在所有 rows * cols >= n 的候选方案中，
+        # 选择「空位最少 + 单元格长宽比最接近字形（正方形）」的方案
+        best = None
+        for cols in range(1, n + 1):
+            rows = math.ceil(n / cols)
+            cand_w = (board_w - pad * (cols + 1)) / cols
+            cand_h = (board_h - pad * (rows + 1) - label_h * rows) / rows
+            if cand_w <= 0 or cand_h <= 0:
+                continue
+            empties = rows * cols - n
+            aspect_penalty = abs(math.log(cand_w / cand_h))
+            score = empties * 0.35 + aspect_penalty
+            if best is None or score < best[0]:
+                best = (score, rows, cols, cand_w, cand_h)
+
+        # 极端情况下（无可行方案）回退到接近正方形的网格
+        if best is None:
+            cols = math.ceil(math.sqrt(n))
+            rows = math.ceil(n / cols)
+            cell_w = (board_w - pad * (cols + 1)) / cols
+            cell_h = (board_h - pad * (rows + 1) - label_h * rows) / rows
+        else:
+            _, rows, cols, cell_w, cell_h = best
+
+        font = _load_cjk_font(font_size)
+        if font is None:
+            logger.warning("未找到可用的中文字体，字形变体图将不标注 type")
+
+        measure = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
+        cells = []
+        for idx, (glyph_type, png_path) in enumerate(ordered_glyphs):
+            row, col = divmod(idx, cols)
+            x0 = board_box[0] + pad + col * (cell_w + pad)
+            y0 = board_box[1] + pad + row * (cell_h + label_h + pad)
+
+            glyph_img = Image.open(png_path).convert("RGBA")
+            # 字形图按单元格自适应缩放（保持长宽比），并为下方标签预留高度
+            # 预留 pad 余量，避免「图+标签」整组高度等于单元格导致无法居中而贴顶
+            avail_h = max(1, cell_h - label_h - label_gap - pad)
+            scale = min(cell_w / glyph_img.width, avail_h / glyph_img.height)
+            new_size = (
+                max(1, int(glyph_img.width * scale)),
+                max(1, int(glyph_img.height * scale)),
+            )
+
+            # 字形图 + 标签作为一个整体在单元格内居中，并整体略微下移
+            group_h = new_size[1] + label_gap + label_h
+            # 单元格余量不足以容纳下移量时（字形较大），按整行高度（含预留标签带）居中，避免内容贴顶
+            band_h = cell_h if (cell_h - group_h) / 2 >= content_shift else cell_h + label_h
+            group_top = y0 + (band_h - group_h) / 2 + content_shift
+            group_top = max(y0, min(group_top, y0 + band_h - group_h))
+
+            gx = int(x0 + (cell_w - new_size[0]) / 2)
+            gy = int(group_top)
+
+            label_xy = None
+            label_bbox = None
+            if font is not None:
+                tb = measure.textbbox((0, 0), glyph_type, font=font)
+                tw = tb[2] - tb[0]
+                label_xy = (int(x0 + (cell_w - tw) / 2), int(gy + new_size[1] + label_gap - tb[1]))
+                label_bbox = tb
+
+            cells.append({
+                "type": glyph_type,
+                "path": png_path,
+                "card": (gx, gy, new_size[0], new_size[1]),
+                "label": label_xy,
+                "label_bbox": label_bbox,
+            })
+
+        return {
+            "blackboard": blackboard_path,
+            "board_box": board_box,
+            "cells": cells,
+            "font": font,
+            "font_size": font_size,
+            "pad": pad,
+        }
+
+    def _render_glyph_board(self, layout: dict, highlight_type: Optional[str] = None) -> Image.Image:
+        """
+        渲染黑板平铺图；指定 highlight_type 时，该字形卡片与标签高亮（粉笔黄描边 + 黄色标签）。
+        """
+        bg = Image.open(layout["blackboard"]).convert("RGBA")
+        draw = ImageDraw.Draw(bg)
+        font = layout["font"]
+        highlight_color = (255, 214, 102, 255)
+
+        for cell in layout["cells"]:
+            gx, gy, w, h = cell["card"]
+            glyph_img = Image.open(cell["path"]).convert("RGBA").resize((w, h), Image.Resampling.LANCZOS)
+            bg.paste(glyph_img, (gx, gy), glyph_img)
+
+            is_highlight = highlight_type is not None and cell["type"] == highlight_type
+
+            tx, ty = cell["label"] if cell["label"] else (None, None)
+            if tx is not None and font is not None:
+                if is_highlight:
+                    # 高亮：黄色文字 + 轻微加粗
+                    draw.text((tx, ty), cell["type"], font=font, fill=highlight_color)
+                    draw.text((tx + 1, ty), cell["type"], font=font, fill=highlight_color)
+                else:
+                    draw.text((tx, ty), cell["type"], font=font, fill=(255, 255, 255, 255))
+
+            if is_highlight:
+                # 卡片 + 标签整体描边高亮
+                tb = cell["label_bbox"]
+                left, right, top = gx, gx + w, gy
+                bottom = (ty + tb[3]) if tb else (gy + h)
+                if tb:
+                    left = min(left, tx + tb[0])
+                    right = max(right, tx + tb[2])
+                margin = int(layout["pad"] * 0.5)
+                line_width = max(4, int(layout["font_size"] * 0.08))
+                draw.rounded_rectangle(
+                    (left - margin, top - margin, right + margin, bottom + margin),
+                    radius=max(8, margin),
+                    outline=highlight_color,
+                    width=line_width,
+                )
+
+        return bg
+
+    def generate_glyph_variant_board(self, glyph_png_paths: dict[str, str]) -> str:
+        """
+        将各个时期的字形变体平铺到黑板背景图上，并标注对应 type，生成一张汇总图片。
+
+        - 字形按演变顺序排列（甲骨文 → 金文 → 楚系简帛 → 说文 → 隶书 → 繁体 → 楷书）
+        - 网格布局根据字形数量自适应（接近正方形）
+        - 每张字形图按单元格自适应缩放（保持长宽比）
+        - 黑板板面区域根据背景图自动检测
+
+        Args:
+            glyph_png_paths: 字形 PNG 路径字典 {type: png_path}
+
+        Returns:
+            生成的图片路径；无可用字形或背景图时返回 ""
+        """
+        layout = self._compute_glyph_cells(glyph_png_paths)
+        if layout is None:
+            print("⚠️ No glyph images to compose glyph variants board")
+            return ""
+
+        output_dir = os.path.join(self.working_dir, "evolution")
+        os.makedirs(output_dir, exist_ok=True)
+        output_path = os.path.join(output_dir, "glyph_variants_board.png")
+
+        if os.path.exists(output_path):
+            print(f"🚀 Skipped generating glyph variants board, already exists")
+            return output_path
+
+        self._render_glyph_board(layout).convert("RGB").save(output_path, "PNG")
+        print(f"✅ Generated glyph variants board: {output_path}")
+        return output_path
+
+    async def generate_glyph_board_video(self, glyph_png_paths: dict[str, str]) -> str:
+        """
+        将字形变体平铺图做成一段视频（替代原过渡动画）：
+
+        1. 先播放 assets/read.flac
+        2. 再按演变顺序依次播放每个字形对应的语音 assets/{type}.flac，之间留静音间隔
+        3. 播到某个字形时，该字形卡片与标签高亮（粉笔黄描边 + 黄色标签）
+        4. 画面为静态平铺图，分辨率与其他分段一致（1680x960）
+
+        时长 = 前静音 + read.flac + Σ(间隔 + 字形语音) + 后静音，
+        4 个字形约 6s；可调整下方 head_silence / gap_silence / tail_silence。
+
+        Args:
+            glyph_png_paths: 字形 PNG 路径字典 {type: png_path}
+
+        Returns:
+            生成的视频路径；无可用字形时返回 ""
+        """
+        head_silence = 0.3   # 开头静音
+        gap_silence = 0.2    # 相邻字形语音之间的间隔
+        tail_silence = 0.3   # 结尾静音
+        video_width, video_height, fps = 1680, 960, 25
+
+        output_dir = os.path.join(self.working_dir, "evolution")
+        os.makedirs(output_dir, exist_ok=True)
+        video_path = os.path.join(output_dir, "glyph_variants_board.mp4")
+        if os.path.exists(video_path):
+            print(f"🚀 Skipped generating glyph variants board video, already exists")
+            return video_path
+
+        layout = self._compute_glyph_cells(glyph_png_paths)
+        if layout is None:
+            print("⚠️ No glyph images to compose glyph variants board video")
+            return ""
+
+        # 1. 基础平铺图 + 每个字形的高亮图
+        base_img_path = self.generate_glyph_variant_board(glyph_png_paths)
+        if not base_img_path:
+            return ""
+
+        highlight_paths: dict[str, str] = {}
+        for idx, cell in enumerate(layout["cells"]):
+            hl_path = os.path.join(output_dir, f"glyph_variants_board_hl_{idx}.png")
+            if not os.path.exists(hl_path):
+                self._render_glyph_board(layout, highlight_type=cell["type"]).convert("RGB").save(hl_path, "PNG")
+            highlight_paths[cell["type"]] = hl_path
+
+        # 2. 准备音频片段
+        silence_dir = os.path.join(self.temp_dir, "board_silence")
+        os.makedirs(silence_dir, exist_ok=True)
+
+        def _probe_sample_rate(path: str) -> int:
+            result = subprocess.run([
+                "ffprobe", "-v", "error", "-select_streams", "a:0",
+                "-show_entries", "stream=sample_rate",
+                "-of", "default=noprint_wrappers=1:nokey=1", path
+            ], capture_output=True, text=True, check=True)
+            try:
+                return int(result.stdout.strip())
+            except ValueError:
+                return 44100
+
+        def _make_silence(duration: float, name: str, sample_rate: int) -> str:
+            path = os.path.join(silence_dir, f"{name}_{sample_rate}.flac")
+            if not os.path.exists(path):
+                subprocess.run([
+                    "ffmpeg", "-y", "-f", "lavfi", "-i", f"anullsrc=r={sample_rate}:cl=stereo",
+                    "-t", f"{duration:.3f}", path
+                ], check=True, capture_output=True)
+            return path
+
+        def _probe_duration(path: str) -> float:
+            result = subprocess.run([
+                "ffprobe", "-v", "error", "-show_entries", "format=duration",
+                "-of", "default=noprint_wrappers=1:nokey=1", path
+            ], capture_output=True, text=True, check=True)
+            return float(result.stdout.strip())
+
+        intro_path = os.path.join(assets_dir, "read.flac")
+        # 静音采样率需与 assets 中的语音一致（素材为 24kHz），否则拼接后总时长会偏差
+        sample_rate = _probe_sample_rate(intro_path) if os.path.exists(intro_path) else 44100
+
+        # 片段序列：[(音频路径, 时长, 该段展示的图片)]
+        segments: list[tuple[str, float, str]] = [
+            (_make_silence(head_silence, "head", sample_rate), head_silence, base_img_path)
+        ]
+
+        if os.path.exists(intro_path):
+            segments.append((intro_path, _probe_duration(intro_path), base_img_path))
+        else:
+            logger.warning(f"Intro audio not found: {intro_path}")
+
+        for idx, cell in enumerate(layout["cells"]):
+            glyph_type = cell["type"]
+            audio_path = os.path.join(assets_dir, f"{glyph_type}.flac")
+            if not os.path.exists(audio_path) and self.audio_generator is not None:
+                # 资源缺失时用 TTS 兜底
+                try:
+                    tts_path = os.path.join(silence_dir, f"narration_{idx}.flac")
+                    audio_output = await self.audio_generator.generate_single_audio(
+                        prompt=glyph_type, character="旁白"
+                    )
+                    audio_output.save(tts_path)
+                    audio_path = tts_path
+                except Exception as e:
+                    logger.warning(f"Failed to generate narration for {glyph_type}: {e}")
+
+            if not os.path.exists(audio_path):
+                logger.warning(f"No audio for glyph {glyph_type}, skip its narration")
+                continue
+
+            segments.append((_make_silence(gap_silence, f"gap_{idx}", sample_rate), gap_silence, base_img_path))
+            segments.append((audio_path, _probe_duration(audio_path), highlight_paths[glyph_type]))
+
+        segments.append((_make_silence(tail_silence, "tail", sample_rate), tail_silence, base_img_path))
+
+        # 3. 拼接音频
+        audio_out_path = os.path.join(self.temp_dir, "board_audio.flac")
+        concat_inputs = []
+        for audio_path, _, _ in segments:
+            concat_inputs.extend(["-i", audio_path])
+        subprocess.run([
+            "ffmpeg", "-y", *concat_inputs,
+            "-filter_complex", f"concat=n={len(segments)}:v=0:a=1[out]",
+            "-map", "[out]", "-ar", str(sample_rate), audio_out_path
+        ], check=True, capture_output=True)
+
+        # 4. 画面：基础图铺满全片，各字形高亮图按其语音时间窗叠加
+        #    （不用分段 concat：图片输入按 -t 取整到帧会丢时长）
+        total_duration = sum(duration for _, duration, _ in segments)
+
+        highlight_windows = []  # [(高亮图, 开始时间, 结束时间)]
+        cursor = 0.0
+        for _, duration, img_path in segments:
+            if img_path != base_img_path:
+                highlight_windows.append((img_path, cursor, cursor + duration))
+            cursor += duration
+
+        video_no_audio_path = os.path.join(self.temp_dir, "board_video_no_audio.mp4")
+
+        def _fit_input(index: int, label: str) -> str:
+            return (
+                f"[{index}:v]scale={video_width}:{video_height}:force_original_aspect_ratio=increase,"
+                f"crop={video_width}:{video_height},setsar=1,fps={fps}[{label}]"
+            )
+
+        cmd = ["ffmpeg", "-y", "-loop", "1", "-framerate", str(fps), "-i", base_img_path]
+        for img_path, _, _ in highlight_windows:
+            cmd.extend(["-loop", "1", "-framerate", str(fps), "-i", img_path])
+
+        filter_parts = [_fit_input(0, "bg")]
+        for i, (_, _, _) in enumerate(highlight_windows):
+            filter_parts.append(_fit_input(i + 1, f"hl{i}"))
+
+        prev = "bg"
+        for i, (_, start, end) in enumerate(highlight_windows):
+            out_label = f"o{i}"
+            filter_parts.append(
+                f"[{prev}][hl{i}]overlay=0:0:enable='between(t,{start:.3f},{end:.3f})'[{out_label}]"
+            )
+            prev = out_label
+
+        cmd.extend([
+            "-filter_complex", ";".join(filter_parts),
+            "-map", f"[{prev}]", "-t", f"{total_duration:.3f}",
+            "-c:v", "libx264", "-preset", "medium", "-r", str(fps),
+            "-pix_fmt", "yuv420p", video_no_audio_path
+        ])
+        subprocess.run(cmd, check=True, capture_output=True)
+
+        # 5. 合成音轨
+        subprocess.run([
+            "ffmpeg", "-y", "-i", video_no_audio_path, "-i", audio_out_path,
+            "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-shortest", video_path
+        ], check=True, capture_output=True)
+
+        total = sum(duration for _, duration, _ in segments)
+        print(f"✅ Generated glyph variants board video: {video_path} ({total:.2f}s)")
+        return video_path
+
     async def merge_videos(self, video_paths: list[str]) -> str:
         """
         合并视频。ffmpeg将视频合并成一个视频，并且使用 fade 转场
@@ -1951,10 +2377,12 @@ class HanziPipeline:
         transition_video_path = ""
 
         if not self.disable_transition and len(glyph_png_paths) > 2:
-            transition_video_path = await self.generate_evolution_video(glyph_png_paths)
+        #     transition_video_path = await self.generate_evolution_video(glyph_png_paths)
+            # Step 6: 生成字形变体视频（平铺图 + 语音 + 逐字高亮，替代原过渡动画）
+            transition_video_path = await self.generate_glyph_board_video(glyph_png_paths)
 
-        if self.check_interrupt("transition"):
-            return ""
+        # if self.check_interrupt("transition"):
+        #     return ""
         
         # Step 7: 合并视频
         final_video_path = await self.merge_videos([py_video_path, stroke_video_path, transition_video_path])
